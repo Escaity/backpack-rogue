@@ -1,3 +1,4 @@
+import { diceRange, formatDice } from '../core/dice';
 import { type Adventurer, EQUIP_SLOTS, type EquipSlotId, SLOT_LABELS, computeStats, consumableSlotCount } from '../core/equipment';
 import { type Grid, type Placement, placementCells } from '../core/grid';
 import { type ItemInstance, getDef } from '../core/items';
@@ -22,7 +23,7 @@ export function itemLabel(item: ItemInstance): string {
 export function describeItem(item: ItemInstance): string {
   const d = getDef(item.defId);
   const lines = [d.name];
-  if (d.weapon) lines.push(`攻撃 ${d.weapon.damage} / CT ${d.weapon.cooldown}秒 / スタミナ ${d.weapon.staminaCost}`);
+  if (d.weapon) lines.push(`攻撃 ${formatDice(d.weapon.dice)}（${diceRange(d.weapon.dice).join("〜")}） / CT ${d.weapon.cooldown}秒 / スタミナ ${d.weapon.staminaCost}`);
   const m = d.mods;
   if (m?.maxHp) lines.push(`最大HP +${m.maxHp}`);
   if (m?.defense) lines.push(`防御 +${m.defense}`);
@@ -65,7 +66,7 @@ export function renderGrid(grid: Grid, container: 'stash' | 'bag', selectedUid: 
         title = esc(describeItem(p.item));
         if (anchor.has(key)) content = `${getDef(p.item.defId).icon}${p.item.qty > 1 ? `<small>${p.item.qty}</small>` : ''}`;
       }
-      html += `<div class="${classes.join(' ')}"${style} data-action="cell" data-container="${container}" data-x="${x}" data-y="${y}" title="${title}">${content}</div>`;
+      html += `<div class="${classes.join(' ')}"${style} data-action="cell" data-container="${container}" data-x="${x}" data-y="${y}"${title ? ` data-tip="${title}"` : ""}>${content}</div>`;
     }
   }
   return `${html}</div>`;
@@ -83,9 +84,9 @@ function slotHtml(attrs: string, label: string, item: ItemInstance | null, selec
   if (item && item.uid === selectedUid) classes.push('selected');
   if (disabled) classes.push('disabled');
   const hue = item ? `--hue:${hueOf(item.defId)};` : '';
-  const title = esc(item ? describeItem(item) : label);
+  const tip = item ? ` data-tip="${esc(describeItem(item))}"` : "";
   const icon = item ? getDef(item.defId).icon : '';
-  return `<div class="${classes.join(' ')}" ${attrs} style="${style}${hue}" title="${title}"><span class="slot-label">${esc(label)}</span><span class="slot-icon">${icon}</span></div>`;
+  return `<div class="${classes.join(' ')}" ${attrs} style="${style}${hue}"${tip}><span class="slot-label">${esc(label)}</span><span class="slot-icon">${icon}</span></div>`;
 }
 
 export function renderEquipment(adv: Adventurer, selectedUid: string | null): string {

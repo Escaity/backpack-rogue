@@ -1,3 +1,5 @@
+import { type Dice, dice } from './dice';
+
 export type Cell = readonly [number, number];
 export type Rotation = 0 | 1 | 2 | 3;
 export type ItemSlot = 'weapon' | 'head' | 'body' | 'belt' | 'legs' | 'feet' | 'hands' | 'arms' | 'ring' | 'neck';
@@ -14,7 +16,7 @@ export interface StatMods {
 }
 
 export interface WeaponStats {
-  damage: number;
+  dice: Dice;
   /** 秒 */
   cooldown: number;
   staminaCost: number;
@@ -70,11 +72,11 @@ const L_SHAPE: Cell[] = [[0, 0], [1, 0], [0, 1], [0, 2]];
 
 const DEFS: ItemDef[] = [
   // 武器
-  { id: 'rusty_dagger', name: '錆びた短剣', icon: '🔪', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 0, weapon: { damage: 4, cooldown: 1.2, staminaCost: 1 }, maxDurability: 10 },
-  { id: 'dagger', name: '短剣', icon: '🗡️', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 15, weapon: { damage: 4, cooldown: 1.0, staminaCost: 1 }, maxDurability: 20 },
-  { id: 'club', name: '棍棒', icon: '🏏', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 10, weapon: { damage: 5, cooldown: 1.6, staminaCost: 2 }, maxDurability: 15 },
-  { id: 'short_sword', name: 'ショートソード', icon: '⚔️', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 30, weapon: { damage: 6, cooldown: 1.4, staminaCost: 2 }, maxDurability: 25 },
-  { id: 'war_axe', name: '戦斧', icon: '🪓', kind: 'equipment', slot: 'weapon', shape: L_SHAPE, value: 45, weapon: { damage: 10, cooldown: 2.2, staminaCost: 3 }, maxDurability: 25 },
+  { id: 'rusty_dagger', name: '錆びた短剣', icon: '🔪', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 0, weapon: { dice: dice(1, 4, 2), cooldown: 1.2, staminaCost: 1 }, maxDurability: 10 },
+  { id: 'dagger', name: '短剣', icon: '🗡️', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 15, weapon: { dice: dice(1, 6, 1), cooldown: 1.0, staminaCost: 1 }, maxDurability: 20 },
+  { id: 'club', name: '棍棒', icon: '🏏', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 10, weapon: { dice: dice(1, 8, 1), cooldown: 1.6, staminaCost: 2 }, maxDurability: 15 },
+  { id: 'short_sword', name: 'ショートソード', icon: '⚔️', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 30, weapon: { dice: dice(1, 8, 2), cooldown: 1.4, staminaCost: 2 }, maxDurability: 25 },
+  { id: 'war_axe', name: '戦斧', icon: '🪓', kind: 'equipment', slot: 'weapon', shape: L_SHAPE, value: 45, weapon: { dice: dice(2, 6, 3), cooldown: 2.2, staminaCost: 3 }, maxDurability: 25 },
   // 防具
   { id: 'rag_shirt', name: 'ボロ布の服', icon: '👕', kind: 'equipment', slot: 'body', shape: rect(2, 2), value: 0, mods: { defense: 1 }, maxDurability: 10 },
   { id: 'leather_armor', name: '革鎧', icon: '🦺', kind: 'equipment', slot: 'body', shape: rect(2, 2), value: 35, mods: { defense: 3 }, maxDurability: 25 },

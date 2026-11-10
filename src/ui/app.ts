@@ -38,18 +38,58 @@ export class App {
   private battleTimer: number | undefined;
   /** 現在の潜入の結果を確定（finishRaid）済みか。潜入開始時にリセットする */
   private raidSettled = false;
+  private readonly tooltip: HTMLDivElement;
 
   constructor(root: HTMLElement, profile: Profile, storage: KeyValueStorage, rng: Rng) {
     this.root = root;
     this.profile = profile;
     this.storage = storage;
     this.rng = rng;
+    this.tooltip = document.createElement('div');
+    this.tooltip.className = 'tooltip';
+    document.body.appendChild(this.tooltip);
     root.addEventListener('click', (e) => this.onClick(e));
+    root.addEventListener('mouseover', (e) => this.onHover(e));
+    root.addEventListener('mousemove', (e) => this.moveTooltip(e));
+    root.addEventListener('mouseleave', () => this.hideTooltip());
     window.addEventListener('keydown', (e) => this.onKey(e));
     this.render();
   }
 
+  /** data-tip を持つ要素にマウスが乗ったら、その内容（1行目を見出し）をツールチップに表示する */
+  private onHover(e: MouseEvent): void {
+    const target = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-tip]') : null;
+    const text = target?.dataset.tip;
+    if (!text) {
+      this.hideTooltip();
+      return;
+    }
+    const [title, ...rest] = text.split('\n');
+    const heading = document.createElement('b');
+    heading.textContent = title;
+    const body = document.createElement('span');
+    body.textContent = rest.join('\n');
+    this.tooltip.replaceChildren(heading, body);
+    this.tooltip.style.display = 'block';
+    this.moveTooltip(e);
+  }
+
+  private moveTooltip(e: MouseEvent): void {
+    if (this.tooltip.style.display !== 'block') return;
+    const margin = 14;
+    const { offsetWidth: w, offsetHeight: h } = this.tooltip;
+    const x = e.clientX + margin + w > window.innerWidth ? e.clientX - margin - w : e.clientX + margin;
+    const y = e.clientY + margin + h > window.innerHeight ? e.clientY - margin - h : e.clientY + margin;
+    this.tooltip.style.left = `${Math.max(4, x)}px`;
+    this.tooltip.style.top = `${Math.max(4, y)}px`;
+  }
+
+  private hideTooltip(): void {
+    this.tooltip.style.display = 'none';
+  }
+
   private render(): void {
+    this.hideTooltip();
     const showBar = this.screen.kind === 'town' || this.screen.kind === 'raid';
     this.root.innerHTML = this.renderBody() + (showBar ? renderSelectionBar(this.selection, this.message) : '');
   }

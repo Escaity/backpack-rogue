@@ -22,7 +22,7 @@ export function renderSelectionBar(sel: { item: ItemInstance; rot: Rotation } | 
 
 export function renderTown(profile: Profile, selectedUid: string | null): string {
   const shop = profile.shop
-    .map((item, i) => `<li title="${esc(describeItem(item))}">${esc(itemLabel(item))}
+    .map((item, i) => `<li data-tip="${esc(describeItem(item))}">${esc(itemLabel(item))}
       <button data-action="buy" data-index="${i}">${buyPrice(item)}G で買う</button></li>`)
     .join('');
   const expand = profile.stash.h < STASH_MAX_HEIGHT
@@ -87,7 +87,7 @@ function renderMap(raid: RaidState): string {
         else if (room.type === 'exit' && exitOpen) icon = '🌀';
         const hint = adjacent.has(room.index) && !room.visited ? roomHint(room) : '';
         const attrs = adjacent.has(room.index) ? ` data-action="move" data-room="${room.index}"` : '';
-        html += `<div class="${classes.join(' ')}"${attrs} title="${esc(hint)}">${icon}${hint ? `<small>${esc(hint)}</small>` : ''}</div>`;
+        html += `<div class="${classes.join(' ')}"${attrs}${hint ? ` data-tip="${esc(hint)}"` : ""}>${icon}${hint ? `<small>${esc(hint)}</small>` : ''}</div>`;
       } else if (gx % 2 === 1 && gy % 2 === 0) {
         const a = (gy / 2) * n + (gx - 1) / 2;
         html += `<div class="link h${linked.has(`${a}-${a + 1}`) ? ' on' : ''}"></div>`;
@@ -116,7 +116,7 @@ export function renderRaid(raid: RaidState, selectedUid: string | null): string 
       : `<span class="muted">脱出口は${EXIT_OPEN_TURN}ターン目に開く</span>`);
   }
   const floor = room.floor
-    .map((item) => `<li><span class="loot-item${item.uid === selectedUid ? ' selected' : ''}" data-action="loot-item" data-uid="${item.uid}" title="${esc(describeItem(item))}">${esc(itemLabel(item))}</span>
+    .map((item) => `<li><span class="loot-item${item.uid === selectedUid ? ' selected' : ''}" data-action="loot-item" data-uid="${item.uid}" data-tip="${esc(describeItem(item))}">${esc(itemLabel(item))}</span>
       <button data-action="pickup" data-uid="${item.uid}">拾う</button></li>`)
     .join('');
   const messages = raid.messages.slice(-8).map((m) => `<li>${esc(m)}</li>`).join('');
@@ -154,7 +154,7 @@ export function renderBattleProgress(raid: RaidState, shown: number): string {
     switch (e.kind) {
       case 'hit':
         hp[e.actor === 0 ? 1 : 0] = e.targetHp;
-        lines.push(`${e.t.toFixed(1)}s ${who}の攻撃！ ${e.damage}ダメージ`);
+        lines.push(`${e.t.toFixed(1)}s ${who}の攻撃！ 🎲${e.dice}=${e.roll} → ${e.damage}ダメージ`);
         break;
       case 'miss':
         lines.push(`${e.t.toFixed(1)}s ${who}の攻撃は外れた`);

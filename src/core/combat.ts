@@ -1,3 +1,4 @@
+import { dice, formatDice, rollDice } from './dice';
 import { type Adventurer, BASE_STATS, type Stats, computeStats, consumableSlotCount, weaponsOf } from './equipment';
 import { type ConsumableEffect, type PeriodicHeal, type WeaponStats, getDef } from './items';
 import type { MonsterDef } from './monsters';
@@ -22,7 +23,7 @@ export interface Fighter {
 }
 
 export type CombatEvent =
-  | { t: number; kind: 'hit'; actor: Side; damage: number; targetHp: number }
+  | { t: number; kind: 'hit'; actor: Side; dice: string; roll: number; damage: number; targetHp: number }
   | { t: number; kind: 'miss'; actor: Side }
   | { t: number; kind: 'heal'; actor: Side; amount: number; hp: number; source: string }
   /** actor は疲労ダメージを受けた側 */
@@ -42,7 +43,7 @@ export interface CombatResult {
 export const TICK = 0.1;
 export const FATIGUE_START = 15;
 export const MAX_DURATION = 60;
-export const FISTS: WeaponStats = { damage: 1, cooldown: 1.5, staminaCost: 0 };
+export const FISTS: WeaponStats = { dice: dice(1, 2), cooldown: 1.5, staminaCost: 0 };
 const EPS = 1e-9;
 
 export function fighterFromAdventurer(adv: Adventurer, name = 'あなた'): Fighter {
@@ -128,9 +129,10 @@ export function simulateCombat(a: Fighter, b: Fighter, rng: Rng): CombatResult {
           events.push({ t, kind: 'miss', actor: side });
           return;
         }
-        const damage = Math.max(1, w.damage - foe.f.stats.defense);
+        const roll = rollDice(w.dice, rng);
+        const damage = Math.max(1, roll - foe.f.stats.defense);
         foe.hp = Math.max(0, foe.hp - damage);
-        events.push({ t, kind: 'hit', actor: side, damage, targetHp: foe.hp });
+        events.push({ t, kind: 'hit', actor: side, dice: formatDice(w.dice), roll, damage, targetHp: foe.hp });
       });
 
       me.f.periodicHeals.forEach((h, i) => {

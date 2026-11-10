@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { type Fighter, FATIGUE_START, simulateCombat } from '../../src/core/combat';
+import { dice } from '../../src/core/dice';
 import { BASE_STATS } from '../../src/core/equipment';
 import { createRng } from '../../src/core/rng';
 
 function makeFighter(over: Partial<Fighter> = {}): Fighter {
   return {
     name: 'テスト', icon: '🧪', stats: { ...BASE_STATS }, hp: BASE_STATS.maxHp,
-    weapons: [{ damage: 5, cooldown: 1, staminaCost: 0 }], periodicHeals: [], consumables: [], ...over,
+    weapons: [{ dice: dice(0, 1, 5), cooldown: 1, staminaCost: 0 }], periodicHeals: [], consumables: [], ...over,
   };
 }
 
@@ -18,8 +19,8 @@ describe('combat', () => {
   });
 
   it('the stronger fighter wins', () => {
-    const a = makeFighter({ weapons: [{ damage: 10, cooldown: 1, staminaCost: 0 }] });
-    const b = makeFighter({ weapons: [{ damage: 1, cooldown: 1, staminaCost: 0 }] });
+    const a = makeFighter({ weapons: [{ dice: dice(0, 1, 10), cooldown: 1, staminaCost: 0 }] });
+    const b = makeFighter({ weapons: [{ dice: dice(0, 1, 1), cooldown: 1, staminaCost: 0 }] });
     const r = simulateCombat(a, b, createRng(1));
     expect(r.winner).toBe(0);
     expect(r.finalHp[1]).toBe(0);
@@ -31,6 +32,22 @@ describe('combat', () => {
     expect(firstHit && firstHit.kind === 'hit' ? firstHit.damage : -1).toBe(1);
   });
 
+  it('damage is rolled from the weapon dice and recorded on the hit', () => {
+    const a = makeFighter({ weapons: [{ dice: dice(1, 6, 2), cooldown: 1, staminaCost: 0 }] });
+    const b = makeFighter({ hp: 1000, stats: { ...BASE_STATS, maxHp: 1000, defense: 1 }, weapons: [] });
+    const hits = simulateCombat(a, b, createRng(5)).events.filter((e) => e.kind === 'hit' && e.actor === 0);
+    const rolls = new Set<number>();
+    for (const h of hits) {
+      if (h.kind !== 'hit') continue;
+      expect(h.roll).toBeGreaterThanOrEqual(3);
+      expect(h.roll).toBeLessThanOrEqual(8);
+      expect(h.damage).toBe(h.roll - 1);
+      expect(h.dice).toBe('1d6+2');
+      rolls.add(h.roll);
+    }
+    expect(rolls.size).toBeGreaterThan(1);
+  });
+
   it('evasion 1 makes every attack miss', () => {
     const r = simulateCombat(makeFighter(), makeFighter({ stats: { ...BASE_STATS, evasion: 1 } }), createRng(1));
     expect(r.events.filter((e) => e.kind === 'hit' && e.actor === 0)).toHaveLength(0);
@@ -40,7 +57,7 @@ describe('combat', () => {
   it('weapons wait for stamina', () => {
     const a = makeFighter({
       stats: { ...BASE_STATS, maxStamina: 2, staminaRegen: 0 },
-      weapons: [{ damage: 1, cooldown: 1, staminaCost: 1 }],
+      weapons: [{ dice: dice(0, 1, 1), cooldown: 1, staminaCost: 1 }],
     });
     const b = makeFighter({ hp: 1000, stats: { ...BASE_STATS, maxHp: 1000 } });
     const r = simulateCombat(a, b, createRng(1));
