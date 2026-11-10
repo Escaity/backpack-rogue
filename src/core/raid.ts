@@ -5,7 +5,7 @@ import {
 } from './dungeon';
 import { type Adventurer, applyWear, computeStats } from './equipment';
 import { GameError } from './errors';
-import { type Dest, type Inventory, type Source, autoStore, moveItem } from './inventory';
+import { type Dest, type Inventory, type Source, autoEquip, autoStore, moveItem } from './inventory';
 import { getDef } from './items';
 import { rollChest, rollMonsterDrops } from './loot';
 import { MONSTER_IDS, getMonster } from './monsters';
@@ -184,6 +184,11 @@ function withInventory(state: RaidState, change: (inv: Inventory) => Inventory):
 
 export function moveRaidItem(state: RaidState, src: Source, dest: Dest): RaidState {
   return withInventory(state, (inv) => moveItem(inv, src, dest));
+}
+
+/** バッグや床のアイテムを空き枠へ自動装備する（埋まっていれば入れ替え） */
+export function equipRaidItem(state: RaidState, src: Source): RaidState {
+  return withInventory(state, (inv) => autoEquip(inv, src));
 }
 
 export function pickUp(state: RaidState, uid: string): RaidState {

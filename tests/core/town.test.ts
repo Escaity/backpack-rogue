@@ -84,6 +84,15 @@ describe('town', () => {
     expect(after.raids).toBe(1);
   });
 
+  it('finishRaid after escaping fully restores HP', () => {
+    const rng = createRng(1);
+    const { profile, raid } = beginRaid(createProfile(rng), rng);
+    const escaped: RaidState = structuredClone(raid);
+    escaped.status = 'escaped';
+    escaped.adventurer.hp = 7;
+    expect(finishRaid(profile, escaped, rng).loadout.hp).toBe(50);
+  });
+
   it('finishRaid after death loses everything carried', () => {
     const rng = createRng(1);
     const { profile, raid } = beginRaid(createProfile(rng), rng);

@@ -56,6 +56,67 @@ export function autoStore(inv: Inventory, src: Source, target: 'bag' | 'stash'):
   return leftover ? { ...next, loot: [...next.loot, leftover] } : next;
 }
 
+const SLOT_CANDIDATES: Readonly<Record<string, readonly EquipSlotId[]>> = {
+  weapon: ['rightHand', 'leftHand'],
+  ring: ['ring1', 'ring2'],
+};
+
+/**
+ * アイテムを適切な枠に自動で装備する。空き枠があればそこへ、なければ先頭の候補枠と入れ替え、
+ * 外した装備は取り出し元（バッグ・倉庫・床）に戻す。戻せなければ何も変えずにエラー。
+ */
+export function autoEquip(inv: Inventory, src: Source): Inventory {
+  const item = peek(inv, src);
+  const def = getDef(item.defId);
+  const adv = inv.adventurer;
+
+  if (def.kind === 'consumable') {
+    const count = consumableSlotCount(adv.equipment);
+    const index = adv.consumables.findIndex((c, i) => i < count && c === null);
+    if (index < 0) throw new InventoryError('空いている消費アイテム枠がありません');
+    return moveItem(inv, src, { kind: 'consumable', index });
+  }
+  if (def.kind === 'bag') {
+    if (adv.bag) throw new InventoryError('バッグの入れ替えは、今のバッグを空にして外してから行ってください');
+    return moveItem(inv, src, { kind: 'bagSlot' });
+  }
+  if (def.kind !== 'equipment' || !def.slot) throw new InventoryError('このアイテムは装備できません');
+
+  const candidates = SLOT_CANDIDATES[def.slot] ?? [def.slot as EquipSlotId];
+  const empty = candidates.find((slot) => !adv.equipment[slot]);
+  if (empty) return moveItem(inv, src, { kind: 'equip', slot: empty });
+
+  // 入れ替え: 新しい装備を取り出し、古い装備を外して取り出し元へ戻してから装備する
+  const slot = candidates[0];
+  const taken = take(inv, src);
+  const removed = take(taken.inv, { kind: 'equip', slot });
+  const returned = returnTo(removed.inv, src, removed.item);
+  return put(returned, { kind: 'equip', slot }, taken.item);
+}
+
+function peek(inv: Inventory, src: Source): ItemInstance {
+  return take(inv, src).item;
+}
+
+function returnTo(inv: Inventory, src: Source, item: ItemInstance): Inventory {
+  switch (src.kind) {
+    case 'loot':
+      return { ...inv, loot: [...inv.loot, item] };
+    case 'stash': {
+      const stash = storeItem(requireStash(inv), item);
+      if (!stash) throw new InventoryError('倉庫に空きがないため入れ替えられません');
+      return { ...inv, stash };
+    }
+    case 'bag': {
+      const bagGrid = storeItem(inv.adventurer.bagGrid, item);
+      if (!bagGrid) throw new InventoryError('バッグに空きがないため入れ替えられません');
+      return { ...inv, adventurer: { ...inv.adventurer, bagGrid } };
+    }
+    default:
+      throw new InventoryError('装備中のアイテムは入れ替えられません');
+  }
+}
+
 function requireStash(inv: Inventory): Grid {
   if (!inv.stash) throw new InventoryError('ここでは倉庫を使えません');
   return inv.stash;

@@ -3,11 +3,11 @@ import { GameError } from '../core/errors';
 import { type Placement, findItemAt } from '../core/grid';
 import type { Dest, Source } from '../core/inventory';
 import type { ItemInstance, Rotation } from '../core/items';
-import { type RaidState, currentRoom, drinkSpring, escape, moveRaidItem, moveTo, openChest, pickUp } from '../core/raid';
+import { type RaidState, currentRoom, drinkSpring, equipRaidItem, escape, moveRaidItem, moveTo, openChest, pickUp } from '../core/raid';
 import type { Rng } from '../core/rng';
 import { type KeyValueStorage, clearSave, saveProfile } from '../core/save';
 import {
-  type Profile, TownError, beginRaid, buy, createProfile, expandStash, finishRaid, moveTownItem, sellFromStash,
+  type Profile, TownError, beginRaid, buy, createProfile, equipTownItem, expandStash, finishRaid, moveTownItem, sellFromStash,
 } from '../core/town';
 import { renderBattle, renderBattleProgress, renderRaid, renderResult, renderSelectionBar, renderTown } from './screens';
 
@@ -168,6 +168,11 @@ export class App {
         this.selection = null;
         this.message = '';
         return;
+      case 'equip':
+        if (!this.selection) return;
+        return this.equip(this.selection.src);
+      case 'equip-loot':
+        return this.equip({ kind: 'loot', uid: data.uid ?? '' });
       case 'sell':
         return this.sellSelected();
       case 'buy':
@@ -272,6 +277,20 @@ export class App {
     }
   }
 
+  /** 空き枠へ自動装備（埋まっていれば入れ替え）。失敗したら GameError が上がり、選択はそのまま */
+  private equip(src: Source): void {
+    if (this.screen.kind === 'town') {
+      this.profile = equipTownItem(this.profile, src);
+      this.afterTownChange();
+    } else if (this.screen.kind === 'raid') {
+      this.screen = { kind: 'raid', raid: equipRaidItem(this.screen.raid, src) };
+    } else {
+      return;
+    }
+    this.selection = null;
+    this.message = '';
+  }
+
   private rotate(): void {
     if (this.selection) this.selection = { ...this.selection, rot: ((this.selection.rot + 1) % 4) as Rotation };
   }
@@ -359,7 +378,9 @@ export class App {
   }
 
   private backToTown(): void {
+    const escaped = this.screen.kind === 'result' && this.screen.raid.status === 'escaped';
     this.screen = { kind: 'town' };
+    this.message = escaped ? '拠点で休息し、HPが全回復した' : '';
   }
 
   private resetSave(): void {

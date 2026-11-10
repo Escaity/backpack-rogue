@@ -1,7 +1,7 @@
-import { type Adventurer, createAdventurer } from './equipment';
+import { type Adventurer, computeStats, createAdventurer } from './equipment';
 import { GameError } from './errors';
 import { type Grid, createGrid, removeAllGold, removeItem, storeItem } from './grid';
-import { type Dest, type Source, moveItem } from './inventory';
+import { type Dest, type Source, autoEquip, moveItem } from './inventory';
 import { type ItemInstance, createItem, getDef } from './items';
 import { rollShopStock } from './loot';
 import { type RaidState, startRaid } from './raid';
@@ -94,6 +94,12 @@ export function moveTownItem(profile: Profile, src: Source, dest: Dest): Profile
   return { ...profile, loadout: inv.adventurer, stash: inv.stash ?? profile.stash };
 }
 
+/** 倉庫やバッグのアイテムを空き枠へ自動装備する（埋まっていれば入れ替え） */
+export function equipTownItem(profile: Profile, src: Source): Profile {
+  const inv = autoEquip({ adventurer: profile.loadout, stash: profile.stash, loot: [] }, src);
+  return { ...profile, loadout: inv.adventurer, stash: inv.stash ?? profile.stash };
+}
+
 /** 手持ちにボロ装備を補って潜入を開始する。拠点の手持ちは空になる（潜入中のリロードはロスト扱い） */
 export function beginRaid(profile: Profile, rng: Rng): { profile: Profile; raid: RaidState } {
   const raid = startRaid(withFreeKit(profile.loadout), rng);
@@ -105,5 +111,7 @@ export function finishRaid(profile: Profile, raid: RaidState, rng: Rng): Profile
   const base = { ...profile, raids: profile.raids + 1, shop: rollShopStock(rng) };
   if (raid.status === 'dead') return { ...base, loadout: createAdventurer() };
   const { grid, amount } = removeAllGold(raid.adventurer.bagGrid);
-  return { ...base, gold: profile.gold + amount, loadout: { ...raid.adventurer, bagGrid: grid } };
+  // 拠点で休息して HP は全回復する
+  const hp = computeStats(raid.adventurer.equipment).maxHp;
+  return { ...base, gold: profile.gold + amount, loadout: { ...raid.adventurer, bagGrid: grid, hp } };
 }

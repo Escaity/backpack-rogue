@@ -4,15 +4,23 @@ import {
 } from '../core/dungeon';
 import { computeStats } from '../core/equipment';
 import { countGold } from '../core/grid';
-import type { ItemInstance, Rotation } from '../core/items';
+import type { Source } from '../core/inventory';
+import { type ItemInstance, type Rotation, getDef } from '../core/items';
 import { getMonster } from '../core/monsters';
 import { ESCAPE_TURNS, type RaidState, SEARCH_TURNS, currentRoom } from '../core/raid';
 import { type Profile, STASH_MAX_HEIGHT, buyPrice, stashExpandCost } from '../core/town';
 import { describeItem, esc, itemLabel, renderEquipment, renderGrid } from './views';
 
-export function renderSelectionBar(sel: { item: ItemInstance; rot: Rotation } | null, message: string): string {
+function isEquippable(item: ItemInstance): boolean {
+  const kind = getDef(item.defId).kind;
+  return kind === 'equipment' || kind === 'consumable' || kind === 'bag';
+}
+
+export function renderSelectionBar(sel: { src: Source; item: ItemInstance; rot: Rotation } | null, message: string): string {
+  const canEquip = sel !== null && (sel.src.kind === 'bag' || sel.src.kind === 'stash' || sel.src.kind === 'loot') && isEquippable(sel.item);
   const info = sel
     ? `選択中: ${esc(itemLabel(sel.item))}（回転 ${sel.rot * 90}°）
+       ${canEquip ? '<button class="primary" data-action="equip">装備する</button>' : ''}
        <button data-action="rotate">回転 (R)</button>
        <button data-action="discard">捨てる</button>
        <button data-action="deselect">選択解除 (Esc)</button>`
@@ -117,7 +125,8 @@ export function renderRaid(raid: RaidState, selectedUid: string | null): string 
   }
   const floor = room.floor
     .map((item) => `<li><span class="loot-item${item.uid === selectedUid ? ' selected' : ''}" data-action="loot-item" data-uid="${item.uid}" data-tip="${esc(describeItem(item))}">${esc(itemLabel(item))}</span>
-      <button data-action="pickup" data-uid="${item.uid}">拾う</button></li>`)
+      <button data-action="pickup" data-uid="${item.uid}">拾う</button>
+      ${isEquippable(item) ? `<button data-action="equip-loot" data-uid="${item.uid}">装備</button>` : ''}</li>`)
     .join('');
   const messages = raid.messages.slice(-8).map((m) => `<li>${esc(m)}</li>`).join('');
   return `<header><h1>浅層</h1>
