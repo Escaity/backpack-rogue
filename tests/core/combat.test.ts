@@ -7,7 +7,8 @@ import { createRng } from '../../src/core/rng';
 function makeFighter(over: Partial<Fighter> = {}): Fighter {
   return {
     name: 'テスト', icon: '🧪', stats: { ...BASE_STATS }, hp: BASE_STATS.maxHp,
-    weapons: [{ dice: dice(0, 1, 5), cooldown: 1, staminaCost: 0 }], periodicHeals: [], consumables: [], ...over,
+    weapons: [{ dice: dice(0, 1, 5), cooldown: 1, staminaCost: 0 }], periodicHeals: [], consumables: [],
+    bagWidth: 0, sequence: [], ...over,
   };
 }
 

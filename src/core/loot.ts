@@ -11,11 +11,14 @@ export const CHEST_TABLE: readonly { defId: string; weight: number }[] = [
   { defId: 'rope_belt', weight: 3 }, { defId: 'leather_belt', weight: 1 },
   { defId: 'ring_guard', weight: 1 }, { defId: 'ring_vigor', weight: 1 }, { defId: 'amulet_life', weight: 1 },
   { defId: 'leather_pack', weight: 1 },
+  { defId: 'bomb', weight: 5 }, { defId: 'herb', weight: 5 }, { defId: 'throwing_knife', weight: 3 },
+  { defId: 'jerky', weight: 3 }, { defId: 'whetstone', weight: 2 }, { defId: 'guard_cloth', weight: 2 },
 ];
 
 export const SHOP_POOL: readonly string[] = [
   'dagger', 'club', 'short_sword', 'leather_cap', 'leather_armor', 'leather_pants', 'boots', 'gloves',
   'bracers', 'rope_belt', 'leather_belt', 'potion', 'leather_pack',
+  'throwing_knife', 'bomb', 'herb', 'jerky',
 ];
 
 function weightedPick(table: readonly { defId: string; weight: number }[], rng: Rng): string {

@@ -13,6 +13,19 @@ class MemoryStorage implements KeyValueStorage {
 }
 
 describe('save', () => {
+  it('fills missing charges from the item definition when loading old saves', () => {
+    const storage = new MemoryStorage();
+    const base = createProfile(createRng(1));
+    const herb = createItem('herb');
+    const knife = createItem('throwing_knife');
+    const profile = { ...base, stash: placeItem(placeItem(base.stash, herb, 0, 0, 0), knife, 1, 0, 0) };
+    const raw = JSON.parse(JSON.stringify({ version: 1, profile }));
+    for (const p of raw.profile.stash.placements) delete p.item.charges;
+    storage.setItem(SAVE_KEY, JSON.stringify(raw));
+    const loaded = loadProfile(storage)!;
+    expect(loaded.stash.placements.map((p) => p.item.charges)).toEqual([3, null]);
+  });
+
   it('round-trips a profile', () => {
     const storage = new MemoryStorage();
     const base = createProfile(createRng(1));

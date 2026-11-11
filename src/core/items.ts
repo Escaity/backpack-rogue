@@ -3,7 +3,7 @@ import { type Dice, dice } from './dice';
 export type Cell = readonly [number, number];
 export type Rotation = 0 | 1 | 2 | 3;
 export type ItemSlot = 'weapon' | 'head' | 'body' | 'belt' | 'legs' | 'feet' | 'hands' | 'arms' | 'ring' | 'neck';
-export type ItemKind = 'equipment' | 'consumable' | 'treasure' | 'gold' | 'bag';
+export type ItemKind = 'equipment' | 'consumable' | 'treasure' | 'gold' | 'bag' | 'tool';
 
 export interface StatMods {
   maxHp?: number;
@@ -33,6 +33,22 @@ export interface ConsumableEffect {
   heal: number;
 }
 
+/** 戦闘道具の効果（シーケンサーでカーソルが来たときに発動） */
+export type ToolEffect =
+  | { kind: 'damage'; dice: Dice }
+  | { kind: 'sharpen'; dice: Dice }
+  | { kind: 'guard'; amount: number }
+  | { kind: 'heal'; dice: Dice }
+  | { kind: 'stamina'; amount: number };
+
+export interface ToolStats {
+  /** 秒。0 なら CT なし */
+  cooldown: number;
+  effect: ToolEffect;
+  /** 回数制限。無ければ無制限 */
+  maxCharges?: number;
+}
+
 export interface ItemDef {
   id: string;
   name: string;
@@ -51,6 +67,7 @@ export interface ItemDef {
   bagSize?: { w: number; h: number };
   maxDurability?: number;
   stackMax?: number;
+  tool?: ToolStats;
 }
 
 export interface ItemInstance {
@@ -58,6 +75,8 @@ export interface ItemInstance {
   defId: string;
   qty: number;
   durability: number | null;
+  /** 回数制限のある戦闘道具の残り回数。それ以外は null */
+  charges: number | null;
 }
 
 export const GOLD_ID = 'gold';
@@ -72,7 +91,7 @@ const L_SHAPE: Cell[] = [[0, 0], [1, 0], [0, 1], [0, 2]];
 
 const DEFS: ItemDef[] = [
   // 武器
-  { id: 'rusty_dagger', name: '錆びた短剣', icon: '🔪', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 0, weapon: { dice: dice(1, 4, 2), cooldown: 1.2, staminaCost: 1 }, maxDurability: 10 },
+  { id: 'rusty_dagger', name: '錆びた短剣', icon: '🗡️', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 0, weapon: { dice: dice(1, 4, 2), cooldown: 1.2, staminaCost: 1 }, maxDurability: 10 },
   { id: 'dagger', name: '短剣', icon: '🗡️', kind: 'equipment', slot: 'weapon', shape: rect(1, 2), value: 15, weapon: { dice: dice(1, 6, 1), cooldown: 1.0, staminaCost: 1 }, maxDurability: 20 },
   { id: 'club', name: '棍棒', icon: '🏏', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 10, weapon: { dice: dice(1, 8, 1), cooldown: 1.6, staminaCost: 2 }, maxDurability: 15 },
   { id: 'short_sword', name: 'ショートソード', icon: '⚔️', kind: 'equipment', slot: 'weapon', shape: rect(1, 3), value: 30, weapon: { dice: dice(1, 8, 2), cooldown: 1.4, staminaCost: 2 }, maxDurability: 25 },
@@ -95,6 +114,14 @@ const DEFS: ItemDef[] = [
   // 消費アイテム
   { id: 'black_bread', name: '黒パン', icon: '🍞', kind: 'consumable', shape: rect(1, 1), value: 0, consumable: { hpBelow: 0.5, heal: 8 } },
   { id: 'potion', name: '回復ポーション', icon: '🧪', kind: 'consumable', shape: rect(1, 1), value: 20, consumable: { hpBelow: 0.5, heal: 20 } },
+  // 戦闘道具（バッグに置くとシーケンサーで発動）
+  { id: 'old_knife', name: '古びた投げナイフ', icon: '🔪', kind: 'tool', shape: rect(1, 1), value: 0, tool: { cooldown: 2, effect: { kind: 'damage', dice: dice(1, 3) } } },
+  { id: 'throwing_knife', name: '投げナイフ', icon: '🔪', kind: 'tool', shape: rect(1, 1), value: 10, tool: { cooldown: 2, effect: { kind: 'damage', dice: dice(1, 4) } } },
+  { id: 'bomb', name: '爆弾', icon: '💣', kind: 'tool', shape: rect(1, 1), value: 15, tool: { cooldown: 0, effect: { kind: 'damage', dice: dice(2, 6) }, maxCharges: 1 } },
+  { id: 'whetstone', name: '砥石', icon: '🪨', kind: 'tool', shape: rect(1, 2), value: 20, tool: { cooldown: 3, effect: { kind: 'sharpen', dice: dice(1, 4) } } },
+  { id: 'guard_cloth', name: '盾布', icon: '🧣', kind: 'tool', shape: rect(2, 1), value: 20, tool: { cooldown: 3, effect: { kind: 'guard', amount: 3 } } },
+  { id: 'herb', name: '薬草', icon: '🌿', kind: 'tool', shape: rect(1, 1), value: 10, tool: { cooldown: 4, effect: { kind: 'heal', dice: dice(1, 4, 1) }, maxCharges: 3 } },
+  { id: 'jerky', name: '干し肉', icon: '🥩', kind: 'tool', shape: rect(1, 1), value: 8, tool: { cooldown: 4, effect: { kind: 'stamina', amount: 3 }, maxCharges: 2 } },
   // 宝物
   { id: 'silver_cup', name: '銀の杯', icon: '🏆', kind: 'treasure', shape: rect(1, 1), value: 30 },
   { id: 'gem', name: 'ルビー', icon: '💎', kind: 'treasure', shape: rect(1, 1), value: 60 },
@@ -125,7 +152,7 @@ export function newUid(): string {
 
 export function createItem(defId: string, qty = 1): ItemInstance {
   const def = getDef(defId);
-  return { uid: newUid(), defId, qty, durability: def.maxDurability ?? null };
+  return { uid: newUid(), defId, qty, durability: def.maxDurability ?? null, charges: def.tool?.maxCharges ?? null };
 }
 
 /** 時計回りに rot×90° 回転し、左上が (0,0) になるよう平行移動した形状を返す（y→x の順にソート済み） */

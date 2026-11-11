@@ -9,7 +9,7 @@ import { type ItemInstance, type Rotation, getDef } from '../core/items';
 import { getMonster } from '../core/monsters';
 import { ESCAPE_TURNS, type RaidState, SEARCH_TURNS, currentRoom } from '../core/raid';
 import { type Profile, STASH_MAX_HEIGHT, buyPrice, stashExpandCost } from '../core/town';
-import { describeItem, esc, itemLabel, renderEquipment, renderGrid } from './views';
+import { describeItem, esc, itemLabel, renderBattleBag, renderEquipment, renderGrid } from './views';
 
 function isEquippable(item: ItemInstance): boolean {
   const kind = getDef(item.defId).kind;
@@ -149,6 +149,9 @@ function fighterCard(icon: string, name: string, hp: number, maxHp: number): str
     <div class="hpbar"><div style="width:${pct}%"></div></div><div>${hp}/${maxHp}</div></div>`;
 }
 
+/** 発動した道具が点灯し続けるゲーム内時間（秒） */
+const TOOL_FLASH_SECONDS = 0.6;
+
 /** 戦闘の進行表示（HPカードとログ）。再生中はここだけを更新する */
 export function renderBattleProgress(raid: RaidState, shown: number): string {
   const battle = raid.lastBattle;
@@ -157,28 +160,56 @@ export function renderBattleProgress(raid: RaidState, shown: number): string {
   const r = battle.result;
   const hp: [number, number] = [r.startHp[0], r.startHp[1]];
   const names: [string, string] = ['あなた', monster.name];
+  const visible = r.events.slice(0, shown);
+  const latestT = visible.length > 0 ? visible[visible.length - 1].t : 0;
+  const flashing = new Set<string>();
+  const useTotal = new Map<string, number>();
+  const useSeen = new Map<string, number>();
+  const isUse = (e: (typeof r.events)[number]): e is (typeof r.events)[number] & { uid: string } =>
+    e.actor === 0 && (e.kind === 'toolHit' || e.kind === 'toolMiss' || e.kind === 'buff' || e.kind === 'heal') && 'uid' in e && !!e.uid;
+  for (const e of r.events) if (isUse(e)) useTotal.set(e.uid, (useTotal.get(e.uid) ?? 0) + 1);
+  for (const e of visible) if (isUse(e)) useSeen.set(e.uid, (useSeen.get(e.uid) ?? 0) + 1);
+  const spent = new Set(r.spentItems.filter((uid) => (useTotal.get(uid) ?? 0) > 0 && useSeen.get(uid) === useTotal.get(uid)));
+  let cursorCol = -1;
   const lines: string[] = [];
-  for (const e of r.events.slice(0, shown)) {
+  const blockedText = (blocked: number): string => (blocked > 0 ? `（🧣${blocked}軽減）` : '');
+  for (const e of visible) {
     const who = names[e.actor];
+    const ts = `${e.t.toFixed(1)}s`;
+    if (e.actor === 0 && 'uid' in e && e.uid && e.t >= latestT - TOOL_FLASH_SECONDS) flashing.add(e.uid);
     switch (e.kind) {
       case 'hit':
         hp[e.actor === 0 ? 1 : 0] = e.targetHp;
-        lines.push(`${e.t.toFixed(1)}s ${who}の攻撃！ 🎲${e.dice}=${e.roll} → ${e.damage}ダメージ`);
+        lines.push(`${ts} ${who}の攻撃！ 🎲${e.dice}=${e.roll}${e.bonus > 0 ? ` +🪨${e.bonus}` : ''} → ${e.damage}ダメージ${blockedText(e.blocked)}`);
         break;
       case 'miss':
-        lines.push(`${e.t.toFixed(1)}s ${who}の攻撃は外れた`);
+        lines.push(`${ts} ${who}の攻撃は外れた`);
         break;
       case 'heal':
         hp[e.actor] = e.hp;
-        lines.push(`${e.t.toFixed(1)}s ${who}は${e.source}でHPが${e.amount}回復`);
+        lines.push(`${ts} ${who}は${e.source}でHPが${e.amount}回復`);
         break;
       case 'fatigue':
         hp[e.actor] = e.hp;
-        lines.push(`${e.t.toFixed(1)}s ${who}は疲労で${e.damage}ダメージ`);
+        lines.push(`${ts} ${who}は疲労で${e.damage}ダメージ`);
+        break;
+      case 'cursor':
+        if (e.actor === 0) cursorCol = e.col;
+        break;
+      case 'toolHit':
+        hp[e.actor === 0 ? 1 : 0] = e.targetHp;
+        lines.push(`${ts} ${e.name} 🎲${e.dice}=${e.roll} → ${e.damage}ダメージ${blockedText(e.blocked)}`);
+        break;
+      case 'toolMiss':
+        lines.push(`${ts} ${e.name}は外れた`);
+        break;
+      case 'buff':
+        lines.push(`${ts} ${e.name}：${e.text}`);
         break;
     }
   }
   return `<div class="battle">${fighterCard('🧙', names[0], hp[0], r.maxHp[0])}<div class="vs">VS</div>${fighterCard(monster.icon, names[1], hp[1], r.maxHp[1])}</div>
+  <div class="battle-bag-wrap"><h3>バッグ（カーソル ${cursorCol >= 0 ? `列${cursorCol + 1}` : '待機中'}）</h3>${renderBattleBag(battle.bag, cursorCol, flashing, spent)}</div>
   <ul class="log battle-log">${lines.slice(-12).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`;
 }
 

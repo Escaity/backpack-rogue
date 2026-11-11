@@ -17,10 +17,10 @@ const DEFS: MonsterDef[] = [
   { id: 'rat', name: '大ネズミ', icon: '🐀', maxHp: 15, defense: 0, evasion: 0.1, weapon: { dice: dice(1, 3), cooldown: 1.0, staminaCost: 0 },
     drops: [{ defId: 'black_bread', chance: 0.3 }], gold: [0, 5] },
   { id: 'goblin', name: 'ゴブリン', icon: '👺', maxHp: 25, defense: 0, evasion: 0.15, weapon: { dice: dice(1, 6, 1), cooldown: 1.2, staminaCost: 0 },
-    drops: [{ defId: 'dagger', chance: 0.2 }, { defId: 'gloves', chance: 0.1 }, { defId: 'rope_belt', chance: 0.15 }, { defId: 'potion', chance: 0.2 }], gold: [5, 20] },
+    drops: [{ defId: 'dagger', chance: 0.2 }, { defId: 'gloves', chance: 0.1 }, { defId: 'rope_belt', chance: 0.15 }, { defId: 'potion', chance: 0.2 }, { defId: 'throwing_knife', chance: 0.15 }, { defId: 'bomb', chance: 0.1 }], gold: [5, 20] },
   { id: 'skeleton', name: '骸骨兵', icon: '💀', maxHp: 30, defense: 1, evasion: 0, weapon: { dice: dice(1, 6, 2), cooldown: 1.6, staminaCost: 0 },
-    drops: [{ defId: 'short_sword', chance: 0.1 }, { defId: 'leather_cap', chance: 0.15 }, { defId: 'silver_cup', chance: 0.2 }], gold: [3, 15] },
-  { id: 'ghoul', name: '屍食鬼', icon: '🧟', maxHp: 38, defense: 1, evasion: 0, weapon: { dice: dice(2, 4, 1), cooldown: 2.0, staminaCost: 0 },
+    drops: [{ defId: 'short_sword', chance: 0.1 }, { defId: 'leather_cap', chance: 0.15 }, { defId: 'silver_cup', chance: 0.2 }, { defId: 'guard_cloth', chance: 0.1 }], gold: [3, 15] },
+  { id: 'ghoul', name: '屍食鬼', icon: '🧟', maxHp: 44, defense: 1, evasion: 0, weapon: { dice: dice(2, 4, 1), cooldown: 2.0, staminaCost: 0 },
     drops: [{ defId: 'leather_armor', chance: 0.15 }, { defId: 'ring_vigor', chance: 0.05 }, { defId: 'gem', chance: 0.15 }], gold: [10, 30] },
 ];
 

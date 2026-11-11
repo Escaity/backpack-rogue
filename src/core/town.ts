@@ -27,6 +27,7 @@ export const FREE_KIT = {
   body: 'rag_shirt',
   bag: 'cloth_sack',
   consumable: 'black_bread',
+  tool: 'old_knife',
 } as const;
 
 export function createProfile(rng: Rng): Profile {
@@ -51,7 +52,7 @@ export function stashExpandCost(profile: Profile): number {
   return 100 * (profile.stash.h - 5);
 }
 
-export function withFreeKit(adventurer: Adventurer): Adventurer {
+export function withFreeKit(adventurer: Adventurer, stash: Grid | null = null): Adventurer {
   const next = structuredClone(adventurer);
   if (!next.equipment.rightHand) next.equipment.rightHand = createItem(FREE_KIT.rightHand);
   if (!next.equipment.body) next.equipment.body = createItem(FREE_KIT.body);
@@ -62,6 +63,12 @@ export function withFreeKit(adventurer: Adventurer): Adventurer {
     next.bagGrid = createGrid(size.w, size.h);
   }
   if (!next.consumables[0]) next.consumables[0] = createItem(FREE_KIT.consumable);
+  const hasTool = next.bagGrid.placements.some((p) => getDef(p.item.defId).kind === 'tool');
+  const hasKnife = [next.bagGrid, stash].some((g) => g?.placements.some((p) => p.item.defId === FREE_KIT.tool));
+  if (!hasTool && !hasKnife) {
+    const stored = storeItem(next.bagGrid, createItem(FREE_KIT.tool));
+    if (stored) next.bagGrid = stored;
+  }
   return next;
 }
 
@@ -102,7 +109,7 @@ export function equipTownItem(profile: Profile, src: Source): Profile {
 
 /** 手持ちにボロ装備を補って潜入を開始する。拠点の手持ちは空になる（潜入中のリロードはロスト扱い） */
 export function beginRaid(profile: Profile, rng: Rng): { profile: Profile; raid: RaidState } {
-  const raid = startRaid(withFreeKit(profile.loadout), rng);
+  const raid = startRaid(withFreeKit(profile.loadout, profile.stash), rng);
   return { profile: { ...profile, loadout: createAdventurer() }, raid };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAdventurer } from '../../src/core/equipment';
-import { countGold, placeItem, storeItem } from '../../src/core/grid';
+import { countGold, createGrid, placeItem, storeItem } from '../../src/core/grid';
 import { createItem } from '../../src/core/items';
 import type { RaidState } from '../../src/core/raid';
 import { createRng } from '../../src/core/rng';
@@ -25,6 +25,29 @@ describe('town', () => {
     expect(kit.bag?.defId).toBe('cloth_sack');
     expect([kit.bagGrid.w, kit.bagGrid.h]).toEqual([4, 3]);
     expect(kit.consumables[0]?.defId).toBe('black_bread');
+  });
+
+  it('free kit adds an old knife when the bag has no tools', () => {
+    const kit = withFreeKit(createAdventurer());
+    expect(kit.bagGrid.placements.map((p) => p.item.defId)).toEqual(['old_knife']);
+  });
+
+  it('free kit does not add a knife when the bag already has a tool', () => {
+    const base = withFreeKit(createAdventurer());
+    const bomb = createItem('bomb');
+    const withBomb = { ...base, bagGrid: placeItem(createGrid(4, 3), bomb, 0, 0, 0) };
+    expect(withFreeKit(withBomb).bagGrid.placements.map((p) => p.item.defId)).toEqual(['bomb']);
+  });
+
+  it('free kit gives no knife when the stash already holds an old knife', () => {
+    const stash = placeItem(createGrid(8, 6), createItem('old_knife'), 0, 0, 0);
+    const kit = withFreeKit(createAdventurer(), stash);
+    expect(kit.bagGrid.placements).toHaveLength(0);
+  });
+
+  it('free kit still gives a knife with an empty stash', () => {
+    const kit = withFreeKit(createAdventurer(), createGrid(8, 6));
+    expect(kit.bagGrid.placements.map((p) => p.item.defId)).toEqual(['old_knife']);
   });
 
   it('buying needs enough gold and stash space', () => {
@@ -79,7 +102,7 @@ describe('town', () => {
     const after = finishRaid(profile, escaped, rng);
     expect(after.gold).toBe(40);
     expect(countGold(after.loadout.bagGrid)).toBe(0);
-    expect(after.loadout.bagGrid.placements.map((p) => p.item.defId)).toEqual(['gem']);
+    expect(after.loadout.bagGrid.placements.map((p) => p.item.defId)).toEqual(['old_knife', 'gem']);
     expect(after.loadout.equipment.rightHand?.defId).toBe('rusty_dagger');
     expect(after.raids).toBe(1);
   });

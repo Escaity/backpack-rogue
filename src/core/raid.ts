@@ -6,10 +6,12 @@ import {
 import { type Adventurer, applyWear, computeStats } from './equipment';
 import { GameError } from './errors';
 import { type Dest, type Inventory, type Source, autoEquip, autoStore, moveItem } from './inventory';
+import type { Grid } from './grid';
 import { getDef } from './items';
 import { rollChest, rollMonsterDrops } from './loot';
 import { MONSTER_IDS, getMonster } from './monsters';
 import type { Rng } from './rng';
+import { applyToolUsage } from './sequencer';
 
 export const MOVE_TURNS = 1;
 export const BATTLE_TURNS = 2;
@@ -23,6 +25,8 @@ export type RaidStatus = 'exploring' | 'dead' | 'escaped';
 export interface LastBattle {
   monsterId: string;
   result: CombatResult;
+  /** 戦闘開始時のバッグ（戦闘画面の再生用） */
+  bag: Grid;
 }
 
 export interface RaidState {
@@ -83,9 +87,11 @@ function advanceTime(s: RaidState, turns: number): void {
 function fight(s: RaidState, room: Room, rng: Rng): void {
   if (!room.monsterId) throw new Error('monster room without monsterId');
   const monster = getMonster(room.monsterId);
+  const bagBefore = structuredClone(s.adventurer.bagGrid);
   const result = simulateCombat(fighterFromAdventurer(s.adventurer), fighterFromMonster(monster), rng);
-  s.lastBattle = { monsterId: monster.id, result };
+  s.lastBattle = { monsterId: monster.id, result, bag: bagBefore };
   s.adventurer.hp = result.finalHp[0];
+  s.adventurer.bagGrid = applyToolUsage(s.adventurer.bagGrid, result.toolCharges, result.spentItems);
   s.adventurer.consumables = s.adventurer.consumables.map((c) => (c && result.usedConsumables.includes(c.uid) ? null : c));
   if (result.winner !== 0) {
     s.adventurer.hp = 0;

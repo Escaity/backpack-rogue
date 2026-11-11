@@ -42,4 +42,15 @@ describe('items', () => {
       if (def.slot === 'weapon') expect(def.weapon, def.id).toBeDefined();
     }
   });
+
+  it('tools have tool stats and limited tools start with full charges', () => {
+    for (const def of Object.values(ITEM_DEFS)) {
+      if (def.kind === 'tool') expect(def.tool, def.id).toBeDefined();
+    }
+    expect(createItem('herb').charges).toBe(3);
+    expect(createItem('bomb').charges).toBe(1);
+    expect(createItem('throwing_knife').charges).toBeNull();
+    expect(createItem('black_bread').charges).toBeNull();
+    expect(getDef('old_knife').value).toBe(0);
+  });
 });

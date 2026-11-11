@@ -31,7 +31,11 @@ export function loadProfile(storage: KeyValueStorage): Profile | null {
   const file = parsed as { version?: unknown; profile?: unknown };
   if (file.version !== SAVE_VERSION || !looksLikeProfile(file.profile)) return null;
   try {
-    for (const item of allItems(file.profile)) getDef(item.defId);
+    for (const item of allItems(file.profile)) {
+      const def = getDef(item.defId);
+      // 古いセーブには charges が無いので、定義の最大回数で補う
+      if ((item as { charges?: number | null }).charges === undefined) item.charges = def.tool?.maxCharges ?? null;
+    }
   } catch {
     return null;
   }

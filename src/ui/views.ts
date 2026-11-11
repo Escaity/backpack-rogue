@@ -2,6 +2,7 @@ import { diceRange, formatDice } from '../core/dice';
 import { type Adventurer, EQUIP_SLOTS, type EquipSlotId, SLOT_LABELS, computeStats, consumableSlotCount } from '../core/equipment';
 import { type Grid, type Placement, placementCells } from '../core/grid';
 import { type ItemInstance, getDef } from '../core/items';
+import { toolEffectText } from '../core/sequencer';
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -32,6 +33,9 @@ export function describeItem(item: ItemInstance): string {
   if (m?.maxStamina) lines.push(`最大スタミナ +${m.maxStamina}`);
   if (d.periodicHeal) lines.push(`${d.periodicHeal.every}秒ごとにHP ${d.periodicHeal.heal}回復`);
   if (d.consumable) lines.push(`HP${Math.round(d.consumable.hpBelow * 100)}%未満でHP ${d.consumable.heal}回復`);
+  if (d.tool) lines.push(d.tool.cooldown === 0 ? `戦闘道具：${toolEffectText(d.tool.effect)}` : `戦闘道具 CT ${d.tool.cooldown}秒：${toolEffectText(d.tool.effect)}`);
+  if (d.tool?.maxCharges) lines.push(`残り ${item.charges ?? d.tool.maxCharges}/${d.tool.maxCharges}`);
+  if (d.consumable) lines.push('バッグに置くと、カーソルが来たときHPが回復量以上減っていれば使う');
   if (d.consumableSlots) lines.push(`消費アイテム枠 ${d.consumableSlots}`);
   if (d.bagSize) lines.push(`バッグ ${d.bagSize.w}×${d.bagSize.h}`);
   if (item.durability !== null && d.maxDurability) lines.push(`耐久 ${item.durability}/${d.maxDurability}`);
@@ -40,8 +44,8 @@ export function describeItem(item: ItemInstance): string {
   return lines.join('\n');
 }
 
-export function renderGrid(grid: Grid, container: 'stash' | 'bag', selectedUid: string | null): string {
-  if (grid.w === 0 || grid.h === 0) return '<p class="muted">バッグを装備していません</p>';
+/** グリッドの各マスに、そこを占める配置と、アイコンを描くマス（配置の先頭マス）を対応づける */
+function gridCells(grid: Grid): { owner: Map<string, Placement>; anchor: Set<string> } {
   const owner = new Map<string, Placement>();
   const anchor = new Set<string>();
   for (const p of grid.placements) {
@@ -50,6 +54,16 @@ export function renderGrid(grid: Grid, container: 'stash' | 'bag', selectedUid: 
       if (i === 0) anchor.add(`${x},${y}`);
     });
   }
+  return { owner, anchor };
+}
+
+function cellContent(p: Placement): string {
+  return `${getDef(p.item.defId).icon}${p.item.qty > 1 ? `<small>${p.item.qty}</small>` : ''}`;
+}
+
+export function renderGrid(grid: Grid, container: 'stash' | 'bag', selectedUid: string | null): string {
+  if (grid.w === 0 || grid.h === 0) return '<p class="muted">バッグを装備していません</p>';
+  const { owner, anchor } = gridCells(grid);
   let html = `<div class="grid" style="--cols:${grid.w}">`;
   for (let y = 0; y < grid.h; y++) {
     for (let x = 0; x < grid.w; x++) {
@@ -58,15 +72,43 @@ export function renderGrid(grid: Grid, container: 'stash' | 'bag', selectedUid: 
       const classes = ['cell'];
       let style = '';
       let content = '';
-      let title = '';
+      let tip = '';
       if (p) {
         classes.push('filled');
         if (p.item.uid === selectedUid) classes.push('selected');
         style = ` style="--hue:${hueOf(p.item.defId)}"`;
-        title = esc(describeItem(p.item));
-        if (anchor.has(key)) content = `${getDef(p.item.defId).icon}${p.item.qty > 1 ? `<small>${p.item.qty}</small>` : ''}`;
+        tip = ` data-tip="${esc(describeItem(p.item))}"`;
+        if (anchor.has(key)) content = cellContent(p);
       }
-      html += `<div class="${classes.join(' ')}"${style} data-action="cell" data-container="${container}" data-x="${x}" data-y="${y}"${title ? ` data-tip="${title}"` : ""}>${content}</div>`;
+      html += `<div class="${classes.join(' ')}"${style} data-action="cell" data-container="${container}" data-x="${x}" data-y="${y}"${tip}>${content}</div>`;
+    }
+  }
+  return `${html}</div>`;
+}
+
+/** 戦闘画面用のバッグ表示（操作不可）。カーソルの列と、発動中の道具を強調する */
+export function renderBattleBag(grid: Grid, cursorCol: number, flashing: ReadonlySet<string>, spent: ReadonlySet<string> = new Set()): string {
+  if (grid.w === 0 || grid.h === 0) return '<p class="muted">バッグなし</p>';
+  const { owner, anchor } = gridCells(grid);
+  let html = `<div class="grid battle-bag" style="--cols:${grid.w}">`;
+  for (let y = 0; y < grid.h; y++) {
+    for (let x = 0; x < grid.w; x++) {
+      const key = `${x},${y}`;
+      const p = owner.get(key);
+      const classes = ['cell'];
+      if (x === cursorCol) classes.push('cursor');
+      let style = '';
+      let content = '';
+      let tip = '';
+      if (p) {
+        classes.push('filled');
+        if (flashing.has(p.item.uid)) classes.push('flash');
+        if (spent.has(p.item.uid)) classes.push('spent');
+        style = ` style="--hue:${hueOf(p.item.defId)}"`;
+        tip = ` data-tip="${esc(describeItem(p.item))}"`;
+        if (anchor.has(key)) content = cellContent(p);
+      }
+      html += `<div class="${classes.join(' ')}"${style}${tip}>${content}</div>`;
     }
   }
   return `${html}</div>`;

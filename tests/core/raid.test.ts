@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Room, EXIT_OPEN_TURN, neighbors } from '../../src/core/dungeon';
 import { type Adventurer, createAdventurer } from '../../src/core/equipment';
-import { countGold, createGrid } from '../../src/core/grid';
+import { countGold, createGrid, placeItem } from '../../src/core/grid';
 import { createItem } from '../../src/core/items';
 import {
   type RaidState, ESCAPE_TURNS, MIASMA_DAMAGE, RaidError, TRAP_DAMAGE,
@@ -27,6 +27,18 @@ function withRoom(state: RaidState, index: number, patch: Partial<Room>): RaidSt
 }
 
 describe('raid', () => {
+  it('spent tools leave the bag after a fight, and the pre-fight bag is kept for playback', () => {
+    const { state, rng } = setup();
+    const target = neighbors(state.dungeon, state.pos)[0];
+    const bomb = createItem('bomb');
+    const s = structuredClone(withRoom(state, target, { type: 'monster', monsterId: 'rat', cleared: false }));
+    s.adventurer.bagGrid = placeItem(s.adventurer.bagGrid, bomb, 0, 0, 0);
+    const next = moveTo(s, target, rng);
+    expect(next.lastBattle?.result.spentItems).toEqual([bomb.uid]);
+    expect(next.adventurer.bagGrid.placements.some((p) => p.item.uid === bomb.uid)).toBe(false);
+    expect(next.lastBattle?.bag.placements.some((p) => p.item.uid === bomb.uid)).toBe(true);
+  });
+
   it('starts at the start room with full HP', () => {
     const { state } = setup();
     expect(state.pos).toBe(state.dungeon.start);
