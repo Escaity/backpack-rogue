@@ -1,13 +1,14 @@
 import {
-  EXIT_OPEN_TURN, MIASMA_SCHEDULE, MIASMA_WARNING, type Room,
-  isClosed, isExitOpen, neighbors, roomHint, turnsUntilClosed,
+  MAX_FLOOR, MIASMA_SCHEDULE, MIASMA_WARNING, type Room,
+  isClosed, neighbors, roomHint, turnsUntilClosed,
 } from '../core/dungeon';
+import { exitStatus } from '../core/exit';
 import { computeStats } from '../core/equipment';
 import { countGold } from '../core/grid';
 import type { Source } from '../core/inventory';
 import { type ItemInstance, type Rotation, getDef } from '../core/items';
 import { getMonster } from '../core/monsters';
-import { ESCAPE_TURNS, type RaidState, SEARCH_TURNS, currentRoom } from '../core/raid';
+import { DESCEND_TURNS, ESCAPE_TURNS, type RaidState, SEARCH_TURNS, currentRoom } from '../core/raid';
 import { type Profile, STASH_MAX_HEIGHT, buyPrice, stashExpandCost } from '../core/town';
 import { describeItem, esc, itemLabel, renderBattleBag, renderEquipment, renderGrid } from './views';
 
@@ -56,7 +57,7 @@ function roomIcon(room: Room): string {
     case 'chest': return room.cleared ? '📭' : '📦';
     case 'trap': return '⚠️';
     case 'spring': return room.cleared ? '🫗' : '⛲';
-    case 'exit': return '🌀';
+    case 'stairs': return '🪜';
     case 'empty': return '';
   }
 }
@@ -67,7 +68,7 @@ function roomTitle(room: Room): string {
     case 'chest': return room.cleared ? '空の宝箱' : '宝箱の部屋';
     case 'trap': return '罠の部屋';
     case 'spring': return '回復の泉';
-    case 'exit': return '脱出口';
+    case 'stairs': return '下り階段';
     case 'empty': return '空き部屋';
   }
 }
@@ -77,7 +78,7 @@ function renderMap(raid: RaidState): string {
   const n = d.size;
   const adjacent = new Set(raid.status === 'exploring' ? neighbors(d, raid.pos) : []);
   const linked = new Set(d.links.map(([a, b]) => `${a}-${b}`));
-  const exitOpen = isExitOpen(raid.turn);
+  const exitRoom = raid.exit.open ? raid.exit.room : null;
   let html = `<div class="map" style="--n:${n * 2 - 1}">`;
   for (let gy = 0; gy < n * 2 - 1; gy++) {
     for (let gx = 0; gx < n * 2 - 1; gx++) {
@@ -87,13 +88,15 @@ function renderMap(raid: RaidState): string {
         if (room.visited) classes.push('visited');
         if (room.index === raid.pos) classes.push('current');
         if (adjacent.has(room.index)) classes.push('adjacent');
-        if (isClosed(room, n, raid.turn)) classes.push('closed');
-        else if ((turnsUntilClosed(room, n, raid.turn) ?? Infinity) <= MIASMA_WARNING) classes.push('warn');
+        if (isClosed(room, n, raid.floorTurn)) classes.push('closed');
+        else if ((turnsUntilClosed(room, n, raid.floorTurn) ?? Infinity) <= MIASMA_WARNING) classes.push('warn');
         let icon = '?';
         if (room.index === raid.pos) icon = '🧙';
+        else if (room.index === exitRoom && raid.exit.discovered) icon = '🌀';
         else if (room.visited) icon = roomIcon(room);
-        else if (room.type === 'exit' && exitOpen) icon = '🌀';
-        const hint = adjacent.has(room.index) && !room.visited ? roomHint(room) : '';
+        let hint = '';
+        if (adjacent.has(room.index) && room.index === exitRoom) hint = '青い光が漏れている';
+        else if (adjacent.has(room.index) && !room.visited) hint = roomHint(room);
         const attrs = adjacent.has(room.index) ? ` data-action="move" data-room="${room.index}"` : '';
         html += `<div class="${classes.join(' ')}"${attrs}${hint ? ` data-tip="${esc(hint)}"` : ""}>${icon}${hint ? `<small>${esc(hint)}</small>` : ''}</div>`;
       } else if (gx % 2 === 1 && gy % 2 === 0) {
@@ -113,29 +116,27 @@ function renderMap(raid: RaidState): string {
 export function renderRaid(raid: RaidState, selectedUid: string | null): string {
   const stats = computeStats(raid.adventurer.equipment);
   const room = currentRoom(raid);
-  const nextMiasma = MIASMA_SCHEDULE.find((s) => s.turn > raid.turn);
-  const exitOpen = isExitOpen(raid.turn);
+  const nextMiasma = MIASMA_SCHEDULE.find((s) => s.turn > raid.floorTurn);
+  const exit = exitStatus(raid.exit, raid.floorTurn);
+  const atExit = raid.exit.open && raid.exit.room === raid.pos;
   const actions: string[] = [];
   if (room.type === 'chest' && !room.cleared) actions.push(`<button data-action="open-chest">宝箱を開ける（${SEARCH_TURNS}ターン）</button>`);
   if (room.type === 'spring' && !room.cleared) actions.push(`<button data-action="drink">泉の水を飲む（${SEARCH_TURNS}ターン）</button>`);
-  if (room.type === 'exit') {
-    actions.push(exitOpen
-      ? `<button class="primary" data-action="escape">脱出する（${ESCAPE_TURNS}ターン）</button>`
-      : `<span class="muted">脱出口は${EXIT_OPEN_TURN}ターン目に開く</span>`);
-  }
+  if (room.type === 'stairs' && raid.floor < MAX_FLOOR) actions.push(`<button class="primary" data-action="descend">階段を降りる（${DESCEND_TURNS}ターン）</button>`);
+  if (atExit) actions.push(`<button class="primary" data-action="escape">脱出する（${ESCAPE_TURNS}ターン）</button>`);
   const floor = room.floor
     .map((item) => `<li><span class="loot-item${item.uid === selectedUid ? ' selected' : ''}" data-action="loot-item" data-uid="${item.uid}" data-tip="${esc(describeItem(item))}">${esc(itemLabel(item))}</span>
       <button data-action="pickup" data-uid="${item.uid}">拾う</button>
       ${isEquippable(item) ? `<button data-action="equip-loot" data-uid="${item.uid}">装備</button>` : ''}</li>`)
     .join('');
   const messages = raid.messages.slice(-8).map((m) => `<li>${esc(m)}</li>`).join('');
-  return `<header><h1>浅層</h1>
+  return `<header><h1>地下${raid.floor}階</h1>
     <div>HP <b>${raid.adventurer.hp}/${stats.maxHp}</b> / ターン ${raid.turn}
-      / ${nextMiasma ? `次の瘴気: ${nextMiasma.turn}ターン目` : '瘴気: 全域'}
-      / 脱出口: ${exitOpen ? '開いている 🌀' : `${EXIT_OPEN_TURN}ターン目に開く`}</div></header>
+      / ${nextMiasma ? `瘴気まで あと${nextMiasma.turn - raid.floorTurn}ターン` : '瘴気: 全域'}
+      / 脱出口: ${exit.open ? `開いている（あと${exit.turnsLeft}ターンで閉じる）` : `閉じている（あと${exit.turnsLeft}ターンで開く）`}</div></header>
   <div class="cols">
     <section><h2>マップ</h2>${renderMap(raid)}<ul class="log">${messages}</ul></section>
-    <section><h2>${esc(roomTitle(room))}</h2><div class="actions">${actions.join('')}</div>
+    <section><h2>${esc(roomTitle(room))}${atExit ? '（脱出口が開いている🌀）' : ''}</h2><div class="actions">${actions.join('')}</div>
       <h3>床のアイテム</h3><ul class="floor">${floor || '<li class="muted">なし</li>'}</ul>
       <div class="drop-zone" data-action="loot-area">ここをクリックで選択中のアイテムを床に置く</div></section>
     <section><h2>装備</h2>${renderEquipment(raid.adventurer, selectedUid)}
@@ -236,6 +237,6 @@ export function renderResult(raid: RaidState): string {
     ? `<p>金貨 ${countGold(raid.adventurer.bagGrid)}G と、次の持ち物を持ち帰った（装備も持ち帰る）。</p><ul>${items || '<li class="muted">なし</li>'}</ul>`
     : '<p>装備とバッグの中身をすべて失った。</p>';
   return `<header><h1>${escaped ? '脱出成功！' : '死亡…'}</h1></header>
-  <section>${body}<ul class="log">${raid.messages.slice(-8).map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+  <section><p>地下${raid.floor}階まで到達</p>${body}<ul class="log">${raid.messages.slice(-8).map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
     <button class="primary" data-action="back-to-town">拠点に戻る</button></section>`;
 }

@@ -46,8 +46,8 @@ describe('sequencer combat', () => {
 
   it('damage tools roll dice and respect defense and evasion', () => {
     const knife = tool('k', [0], 2, { kind: 'damage', dice: dice(0, 1, 4) });
-    const hit = usesOf(simulateCombat(sturdy({ bagWidth: 1, sequence: [knife] }), sturdy({ stats: { ...BASE_STATS, maxHp: 1000, defense: 1 } }), createRng(1)), 'k')[0];
-    expect(hit).toMatchObject({ kind: 'toolHit', t: 1, roll: 4, damage: 3, dice: '4' });
+    const hit = usesOf(simulateCombat(sturdy({ bagWidth: 1, sequence: [knife] }), sturdy({ stats: { ...BASE_STATS, maxHp: 1000, defense: 10 } }), createRng(1)), 'k')[0];
+    expect(hit).toMatchObject({ kind: 'toolHit', t: 1, roll: 4, damage: 2, dice: '4' });
     const misses = usesOf(simulateCombat(sturdy({ bagWidth: 1, sequence: [knife] }), sturdy({ stats: { ...BASE_STATS, maxHp: 1000, evasion: 1 } }), createRng(1)), 'k');
     expect(misses.length).toBeGreaterThan(0);
     expect(misses.every((e) => e.kind === 'toolMiss')).toBe(true);

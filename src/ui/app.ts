@@ -3,7 +3,7 @@ import { GameError } from '../core/errors';
 import { type Placement, findItemAt } from '../core/grid';
 import type { Dest, Source } from '../core/inventory';
 import type { ItemInstance, Rotation } from '../core/items';
-import { type RaidState, currentRoom, drinkSpring, equipRaidItem, escape, moveRaidItem, moveTo, openChest, pickUp } from '../core/raid';
+import { type RaidState, currentRoom, descend, drinkSpring, equipRaidItem, escape, moveRaidItem, moveTo, openChest, pickUp } from '../core/raid';
 import type { Rng } from '../core/rng';
 import { type KeyValueStorage, clearSave, saveProfile } from '../core/save';
 import {
@@ -188,9 +188,11 @@ export class App {
       case 'open-chest':
         return this.afterRaidAction(openChest(this.raid(), this.rng));
       case 'drink':
-        return this.afterRaidAction(drinkSpring(this.raid()));
+        return this.afterRaidAction(drinkSpring(this.raid(), this.rng));
       case 'escape':
-        return this.afterRaidAction(escape(this.raid()));
+        return this.afterRaidAction(escape(this.raid(), this.rng));
+      case 'descend':
+        return this.afterRaidAction(descend(this.raid(), this.rng));
       case 'skip-battle':
         return this.skipBattle();
       case 'battle-continue':

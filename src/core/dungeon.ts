@@ -1,7 +1,8 @@
 import type { ItemInstance } from './items';
+import { monstersForFloor } from './monsters';
 import type { Rng } from './rng';
 
-export type RoomType = 'empty' | 'monster' | 'chest' | 'trap' | 'spring' | 'exit';
+export type RoomType = 'empty' | 'monster' | 'chest' | 'trap' | 'spring' | 'stairs';
 
 export interface Room {
   index: number;
@@ -16,21 +17,24 @@ export interface Room {
 }
 
 export interface Dungeon {
+  /** 地下何階か（1〜MAX_FLOOR） */
+  depth: number;
   size: number;
   rooms: Room[];
   links: [number, number][];
   start: number;
-  exits: number[];
+  /** 下り階段の部屋。最下層では null */
+  stairs: number | null;
 }
 
 export const DUNGEON_SIZE = 5;
 export const EXTRA_LINKS = 4;
-export const EXIT_COUNT = 2;
-export const EXIT_OPEN_TURN = 12;
+export const MAX_FLOOR = 3;
+export const STAIRS_MIN_DISTANCE = 3;
 export const MIASMA_SCHEDULE: readonly { ring: number; turn: number }[] = [
-  { ring: 2, turn: 30 },
+  { ring: 2, turn: 27 },
   { ring: 1, turn: 45 },
-  { ring: 0, turn: 60 },
+  { ring: 0, turn: 65 },
 ];
 export const MIASMA_WARNING = 5;
 
@@ -49,10 +53,6 @@ export function turnsUntilClosed(room: { x: number; y: number }, size: number, t
 export function isClosed(room: { x: number; y: number }, size: number, turn: number): boolean {
   const left = turnsUntilClosed(room, size, turn);
   return left !== null && left <= 0;
-}
-
-export function isExitOpen(turn: number): boolean {
-  return turn >= EXIT_OPEN_TURN;
 }
 
 export function neighbors(d: Dungeon, index: number): number[] {
@@ -74,7 +74,7 @@ function pair(a: number, b: number): [number, number] {
   return a < b ? [a, b] : [b, a];
 }
 
-export function generateDungeon(rng: Rng, monsterIds: readonly string[]): Dungeon {
+export function generateDungeon(rng: Rng, depth: number): Dungeon {
   const size = DUNGEON_SIZE;
   const rooms: Room[] = [];
   for (let y = 0; y < size; y++) {
@@ -110,11 +110,15 @@ export function generateDungeon(rng: Rng, monsterIds: readonly string[]): Dungeo
   }
 
   const s = rooms[start];
-  const far = rooms.filter((r) => Math.abs(r.x - s.x) + Math.abs(r.y - s.y) >= 4);
-  const exits = rng.shuffle(far).slice(0, EXIT_COUNT).map((r) => r.index);
-  for (const e of exits) rooms[e].type = 'exit';
+  let stairs: number | null = null;
+  if (depth < MAX_FLOOR) {
+    const far = rooms.filter((r) => Math.abs(r.x - s.x) + Math.abs(r.y - s.y) >= STAIRS_MIN_DISTANCE);
+    stairs = rng.pick(far).index;
+    rooms[stairs].type = 'stairs';
+  }
 
-  const rest = rng.shuffle(rooms.filter((r) => r.index !== start && !exits.includes(r.index)));
+  const monsterIds = monstersForFloor(depth);
+  const rest = rng.shuffle(rooms.filter((r) => r.index !== start && r.index !== stairs));
   let cursor = 0;
   for (const [type, count] of ROOM_PLAN) {
     for (let i = 0; i < count; i++) {
@@ -126,7 +130,7 @@ export function generateDungeon(rng: Rng, monsterIds: readonly string[]): Dungeo
 
   rooms[start].visited = true;
   rooms[start].cleared = true;
-  return { size, rooms, links, start, exits };
+  return { depth, size, rooms, links, start, stairs };
 }
 
 /** 隣の未訪問の部屋から感じ取れる気配 */
@@ -136,7 +140,7 @@ export function roomHint(room: Room): string {
     case 'chest': return '金属の匂い';
     case 'trap': return '嫌な気配';
     case 'spring': return '水音';
-    case 'exit': return '冷たい風';
+    case 'stairs': return '下から風が吹き上がる';
     case 'empty': return '静か';
   }
 }

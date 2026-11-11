@@ -33,6 +33,18 @@ describe('combat', () => {
     expect(firstHit && firstHit.kind === 'hit' ? firstHit.damage : -1).toBe(1);
   });
 
+  it('defense reduces damage by a percentage: 10 defense halves it', () => {
+    const a = makeFighter({ weapons: [{ dice: dice(0, 1, 8), cooldown: 1, staminaCost: 0 }] });
+    const hit = (defense: number) => {
+      const b = makeFighter({ hp: 1000, stats: { ...BASE_STATS, maxHp: 1000, defense }, weapons: [] });
+      const e = simulateCombat(a, b, createRng(1)).events.find((x) => x.kind === 'hit' && x.actor === 0);
+      return e && e.kind === 'hit' ? e.damage : -1;
+    };
+    expect(hit(0)).toBe(8);
+    expect(hit(10)).toBe(4);
+    expect(hit(30)).toBe(2);
+  });
+
   it('damage is rolled from the weapon dice and recorded on the hit', () => {
     const a = makeFighter({ weapons: [{ dice: dice(1, 6, 2), cooldown: 1, staminaCost: 0 }] });
     const b = makeFighter({ hp: 1000, stats: { ...BASE_STATS, maxHp: 1000, defense: 1 }, weapons: [] });
@@ -42,7 +54,7 @@ describe('combat', () => {
       if (h.kind !== 'hit') continue;
       expect(h.roll).toBeGreaterThanOrEqual(3);
       expect(h.roll).toBeLessThanOrEqual(8);
-      expect(h.damage).toBe(h.roll - 1);
+      expect(h.damage).toBe(Math.max(1, Math.round((h.roll * 10) / 11)));
       expect(h.dice).toBe('1d6+2');
       rolls.add(h.roll);
     }

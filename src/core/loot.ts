@@ -1,4 +1,4 @@
-import { GOLD_ID, type ItemInstance, createItem } from './items';
+import { GOLD_ID, type ItemInstance, createItem, getDef } from './items';
 import type { MonsterDef } from './monsters';
 import type { Rng } from './rng';
 
@@ -38,10 +38,14 @@ export function rollMonsterDrops(monster: MonsterDef, rng: Rng): ItemInstance[] 
   return items;
 }
 
-export function rollChest(rng: Rng): ItemInstance[] {
-  const count = rng.int(1, 3);
-  const items = Array.from({ length: count }, () => createItem(weightedPick(CHEST_TABLE, rng)));
-  items.push(createItem(GOLD_ID, rng.int(5, 40)));
+/** 宝箱の中身。深い階ほど数と金貨が増え、地下 3 階では宝物が出やすい */
+export function rollChest(rng: Rng, floor = 1): ItemInstance[] {
+  const table = floor >= 3
+    ? CHEST_TABLE.map((e) => (getDef(e.defId).kind === 'treasure' ? { ...e, weight: e.weight * 2 } : e))
+    : CHEST_TABLE;
+  const count = rng.int(floor, floor + 2);
+  const items = Array.from({ length: count }, () => createItem(weightedPick(table, rng)));
+  items.push(createItem(GOLD_ID, rng.int(5 * floor, 40 * floor)));
   return items;
 }
 

@@ -1,32 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { fighterFromAdventurer, fighterFromMonster, simulateCombat } from '../../src/core/combat';
-import { computeStats, createAdventurer } from '../../src/core/equipment';
-import { MONSTER_IDS, getMonster } from '../../src/core/monsters';
-import { createRng } from '../../src/core/rng';
-import { withFreeKit } from '../../src/core/town';
+import { clearRate } from '../sim/bot';
+import { basicLoadout, fullLoadout, starterLoadout } from '../sim/loadouts';
 
-const SEEDS = 300;
+describe('clear rates with the reference bot (300 raids each)', () => {
+  it('地下1階：初期装備で 40〜60%', () => {
+    const rate = clearRate(starterLoadout, 1);
+    expect(rate, `rate=${rate}`).toBeGreaterThanOrEqual(0.4);
+    expect(rate, `rate=${rate}`).toBeLessThanOrEqual(0.6);
+  }, 120_000);
 
-function winRate(startHp: number, monsterId: string): number {
-  const kit = withFreeKit(createAdventurer());
-  let wins = 0;
-  for (let seed = 0; seed < SEEDS; seed++) {
-    const r = simulateCombat(fighterFromAdventurer({ ...kit, hp: startHp }), fighterFromMonster(getMonster(monsterId)), createRng(seed));
-    if (r.winner === 0) wins++;
-  }
-  return wins / SEEDS;
-}
+  it('地下2階：最低限の武器と防具で 30〜50%', () => {
+    const rate = clearRate(basicLoadout, 2);
+    expect(rate, `rate=${rate}`).toBeGreaterThanOrEqual(0.3);
+    expect(rate, `rate=${rate}`).toBeLessThanOrEqual(0.5);
+  }, 120_000);
 
-describe('balance (starter kit + old knife)', () => {
-  const maxHp = computeStats(withFreeKit(createAdventurer()).equipment).maxHp;
-
-  it('wins against every shallow monster at full HP', () => {
-    for (const id of MONSTER_IDS) expect(winRate(maxHp, id), id).toBeGreaterThanOrEqual(0.95);
-  });
-
-  it('a ghoul fight at half HP is roughly a coin flip', () => {
-    const rate = winRate(Math.floor(maxHp / 2), 'ghoul');
-    expect(rate).toBeGreaterThanOrEqual(0.4);
-    expect(rate).toBeLessThanOrEqual(0.6);
-  });
+  it('地下3階：フル装備＋バッグの戦闘道具で 20〜40%', () => {
+    const rate = clearRate(fullLoadout, 3);
+    expect(rate, `rate=${rate}`).toBeGreaterThanOrEqual(0.2);
+    expect(rate, `rate=${rate}`).toBeLessThanOrEqual(0.4);
+  }, 120_000);
 });

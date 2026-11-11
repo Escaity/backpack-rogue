@@ -135,9 +135,17 @@ function heal(me: FighterState, side: Side, amount: number, source: string, t: n
   events.push(uid ? { t, kind: 'heal', actor: side, amount: actual, hp: me.hp, source, uid } : { t, kind: 'heal', actor: side, amount: actual, hp: me.hp, source });
 }
 
-/** 当たった攻撃のダメージを計算して与える（防御で最低 1、その後に盾布で軽減） */
+/** 防御による軽減の基準値。防御がこの値と同じとき、ダメージは半分になる */
+export const DEFENSE_SCALE = 10;
+
+/** 防御による割合軽減（最低 1） */
+export function mitigate(raw: number, defense: number): number {
+  return Math.max(1, Math.round((raw * DEFENSE_SCALE) / (DEFENSE_SCALE + defense)));
+}
+
+/** 当たった攻撃のダメージを計算して与える（防御で割合軽減して最低 1、その後に盾布で軽減） */
 function strike(foe: FighterState, raw: number): { damage: number; blocked: number } {
-  let damage = Math.max(1, raw - foe.f.stats.defense);
+  let damage = mitigate(raw, foe.f.stats.defense);
   let blocked = 0;
   if (foe.guard > 0) {
     blocked = Math.min(foe.guard, damage);

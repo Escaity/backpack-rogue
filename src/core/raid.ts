@@ -1,15 +1,16 @@
 import { type CombatResult, fighterFromAdventurer, fighterFromMonster, simulateCombat } from './combat';
 import {
-  type Dungeon, EXIT_OPEN_TURN, MIASMA_SCHEDULE, MIASMA_WARNING, type Room,
-  generateDungeon, isClosed, isExitOpen, neighbors,
+  type Dungeon, MAX_FLOOR, MIASMA_SCHEDULE, MIASMA_WARNING, type Room,
+  generateDungeon, isClosed, neighbors,
 } from './dungeon';
+import { type ExitState, discoverExit, initialExit, stepExit } from './exit';
 import { type Adventurer, applyWear, computeStats } from './equipment';
 import { GameError } from './errors';
 import { type Dest, type Inventory, type Source, autoEquip, autoStore, moveItem } from './inventory';
 import type { Grid } from './grid';
 import { getDef } from './items';
 import { rollChest, rollMonsterDrops } from './loot';
-import { MONSTER_IDS, getMonster } from './monsters';
+import { getMonster, scaledMonster } from './monsters';
 import type { Rng } from './rng';
 import { applyToolUsage } from './sequencer';
 
@@ -17,7 +18,8 @@ export const MOVE_TURNS = 1;
 export const BATTLE_TURNS = 2;
 export const SEARCH_TURNS = 1;
 export const ESCAPE_TURNS = 3;
-export const TRAP_DAMAGE = 8;
+export const DESCEND_TURNS = 1;
+export const TRAP_DAMAGE = 3;
 export const MIASMA_DAMAGE = 6;
 
 export type RaidStatus = 'exploring' | 'dead' | 'escaped';
@@ -31,7 +33,13 @@ export interface LastBattle {
 
 export interface RaidState {
   dungeon: Dungeon;
+  /** 地下何階にいるか（1〜MAX_FLOOR） */
+  floor: number;
+  /** この階に来てからのターン数（瘴気と脱出口のタイマー） */
+  floorTurn: number;
+  exit: ExitState;
   pos: number;
+  /** 潜入開始からの通算ターン（ログ表示用） */
   turn: number;
   adventurer: Adventurer;
   status: RaidStatus;
@@ -43,10 +51,13 @@ export interface RaidState {
 export class RaidError extends GameError {}
 
 export function startRaid(adventurer: Adventurer, rng: Rng): RaidState {
-  const dungeon = generateDungeon(rng, MONSTER_IDS);
+  const dungeon = generateDungeon(rng, 1);
   const adv = structuredClone(adventurer);
   adv.hp = computeStats(adv.equipment).maxHp;
-  return { dungeon, pos: dungeon.start, turn: 0, adventurer: adv, status: 'exploring', messages: ['[0] ダンジョンに潜入した'], lastBattle: null };
+  return {
+    dungeon, floor: 1, floorTurn: 0, exit: initialExit(), pos: dungeon.start, turn: 0,
+    adventurer: adv, status: 'exploring', messages: ['[0] 地下1階に潜入した'], lastBattle: null,
+  };
 }
 
 export function currentRoom(state: RaidState): Room {
@@ -69,24 +80,29 @@ function damage(s: RaidState, amount: number, cause: string): void {
   }
 }
 
-function advanceTime(s: RaidState, turns: number): void {
+function advanceTime(s: RaidState, turns: number, rng: Rng): void {
   for (let i = 0; i < turns && s.status === 'exploring'; i++) {
     s.turn += 1;
-    if (s.turn === EXIT_OPEN_TURN) log(s, 'どこかで脱出口が開いた');
+    s.floorTurn += 1;
+    const step = stepExit(s.exit, s.dungeon, s.pos, s.floorTurn, rng);
+    s.exit = step.exit;
+    if (step.event === 'opened') log(s, 'どこかで脱出口が開いた');
+    if (step.event === 'closed') log(s, '脱出口が閉じた');
     for (const entry of MIASMA_SCHEDULE) {
-      if (s.turn === entry.turn - MIASMA_WARNING) log(s, `${MIASMA_WARNING}ターン後に瘴気が広がる`);
-      if (s.turn === entry.turn) log(s, '瘴気が広がった');
+      if (s.floorTurn === entry.turn - MIASMA_WARNING) log(s, `${MIASMA_WARNING}ターン後に瘴気が広がる`);
+      if (s.floorTurn === entry.turn) log(s, '瘴気が広がった');
     }
-    if (isClosed(currentRoom(s), s.dungeon.size, s.turn)) {
+    if (isClosed(currentRoom(s), s.dungeon.size, s.floorTurn)) {
       log(s, `瘴気で${MIASMA_DAMAGE}ダメージ`);
       damage(s, MIASMA_DAMAGE, '瘴気');
     }
+    s.exit = discoverExit(s.exit, s.dungeon, s.pos);
   }
 }
 
 function fight(s: RaidState, room: Room, rng: Rng): void {
   if (!room.monsterId) throw new Error('monster room without monsterId');
-  const monster = getMonster(room.monsterId);
+  const monster = scaledMonster(getMonster(room.monsterId), s.floor);
   const bagBefore = structuredClone(s.adventurer.bagGrid);
   const result = simulateCombat(fighterFromAdventurer(s.adventurer), fighterFromMonster(monster), rng);
   s.lastBattle = { monsterId: monster.id, result, bag: bagBefore };
@@ -106,7 +122,7 @@ function fight(s: RaidState, room: Room, rng: Rng): void {
   s.adventurer.hp = Math.min(s.adventurer.hp, computeStats(s.adventurer.equipment).maxHp);
   for (const item of worn.broken) log(s, `${getDef(item.defId).name}が壊れた`);
   room.floor.push(...rollMonsterDrops(monster, rng));
-  advanceTime(s, BATTLE_TURNS);
+  advanceTime(s, BATTLE_TURNS, rng);
 }
 
 export function moveTo(state: RaidState, target: number, rng: Rng): RaidState {
@@ -115,7 +131,7 @@ export function moveTo(state: RaidState, target: number, rng: Rng): RaidState {
   const s = structuredClone(state);
   s.lastBattle = null;
   s.pos = target;
-  advanceTime(s, MOVE_TURNS);
+  advanceTime(s, MOVE_TURNS, rng);
   if (s.status !== 'exploring') return s;
   const room = currentRoom(s);
   room.visited = true;
@@ -140,13 +156,13 @@ export function openChest(state: RaidState, rng: Rng): RaidState {
   s.lastBattle = null;
   const room = currentRoom(s);
   room.cleared = true;
-  room.floor.push(...rollChest(rng));
+  room.floor.push(...rollChest(rng, s.floor));
   log(s, '宝箱を開けた');
-  advanceTime(s, SEARCH_TURNS);
+  advanceTime(s, SEARCH_TURNS, rng);
   return s;
 }
 
-export function drinkSpring(state: RaidState): RaidState {
+export function drinkSpring(state: RaidState, rng: Rng): RaidState {
   assertExploring(state);
   const target = currentRoom(state);
   if (target.type !== 'spring' || target.cleared) throw new RaidError('飲める泉がありません');
@@ -157,22 +173,39 @@ export function drinkSpring(state: RaidState): RaidState {
   const before = s.adventurer.hp;
   s.adventurer.hp = Math.min(maxHp, before + Math.ceil(maxHp * 0.5));
   log(s, `泉の水でHPが${s.adventurer.hp - before}回復した`);
-  advanceTime(s, SEARCH_TURNS);
+  advanceTime(s, SEARCH_TURNS, rng);
   return s;
 }
 
-export function escape(state: RaidState): RaidState {
+export function escape(state: RaidState, rng: Rng): RaidState {
   assertExploring(state);
-  if (currentRoom(state).type !== 'exit') throw new RaidError('ここは脱出口ではありません');
-  if (!isExitOpen(state.turn)) throw new RaidError(`脱出口は${EXIT_OPEN_TURN}ターン目に開きます`);
+  if (!state.exit.open || state.exit.room !== state.pos) throw new RaidError('ここには開いている脱出口がありません');
   const s = structuredClone(state);
   s.lastBattle = null;
   log(s, '脱出の詠唱を始めた');
-  advanceTime(s, ESCAPE_TURNS);
+  // 詠唱を始めていれば、途中で脱出口が閉じても脱出できる
+  advanceTime(s, ESCAPE_TURNS, rng);
   if (s.status === 'exploring') {
     s.status = 'escaped';
     log(s, '脱出に成功した！');
   }
+  return s;
+}
+
+export function descend(state: RaidState, rng: Rng): RaidState {
+  assertExploring(state);
+  if (currentRoom(state).type !== 'stairs') throw new RaidError('ここには階段がありません');
+  if (state.floor >= MAX_FLOOR) throw new RaidError('これより下の階はありません');
+  const s = structuredClone(state);
+  s.lastBattle = null;
+  advanceTime(s, DESCEND_TURNS, rng);
+  if (s.status !== 'exploring') return s;
+  s.floor += 1;
+  s.dungeon = generateDungeon(rng, s.floor);
+  s.pos = s.dungeon.start;
+  s.floorTurn = 0;
+  s.exit = initialExit();
+  log(s, `地下${s.floor}階に降りた`);
   return s;
 }
 

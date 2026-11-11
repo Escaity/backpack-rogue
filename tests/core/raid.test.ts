@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Room, EXIT_OPEN_TURN, neighbors } from '../../src/core/dungeon';
+import { type Room, MAX_FLOOR, neighbors } from '../../src/core/dungeon';
 import { type Adventurer, createAdventurer } from '../../src/core/equipment';
 import { countGold, createGrid, placeItem } from '../../src/core/grid';
 import { createItem } from '../../src/core/items';
+import { getMonster, scaledMonster } from '../../src/core/monsters';
 import {
-  type RaidState, ESCAPE_TURNS, MIASMA_DAMAGE, RaidError, TRAP_DAMAGE,
-  currentRoom, drinkSpring, escape, moveRaidItem, moveTo, openChest, pickUp, startRaid,
+  type RaidState, DESCEND_TURNS, ESCAPE_TURNS, MIASMA_DAMAGE, RaidError, TRAP_DAMAGE,
+  currentRoom, descend, drinkSpring, escape, moveRaidItem, moveTo, openChest, pickUp, startRaid,
 } from '../../src/core/raid';
 import { createRng } from '../../src/core/rng';
 
@@ -45,6 +46,9 @@ describe('raid', () => {
     expect(state.turn).toBe(0);
     expect(state.adventurer.hp).toBe(50);
     expect(state.status).toBe('exploring');
+    expect(state.floor).toBe(1);
+    expect(state.floorTurn).toBe(0);
+    expect(state.exit.open).toBe(false);
   });
 
   it('rejects moves to rooms that are not linked', () => {
@@ -105,12 +109,12 @@ describe('raid', () => {
   });
 
   it('the spring heals half of max HP once', () => {
-    const { state } = setup();
+    const { state, rng } = setup();
     const hurt = structuredClone(withRoom(state, state.pos, { type: 'spring', cleared: false }));
     hurt.adventurer.hp = 10;
-    const next = drinkSpring(hurt);
+    const next = drinkSpring(hurt, rng);
     expect(next.adventurer.hp).toBe(35);
-    expect(() => drinkSpring(next)).toThrow(RaidError);
+    expect(() => drinkSpring(next, rng)).toThrow(RaidError);
   });
 
   it('picks up floor items into the bag', () => {
@@ -163,33 +167,121 @@ describe('raid', () => {
     expect(currentRoom(dropped).floor.map((i) => i.uid)).toEqual([gem.uid]);
   });
 
-  it('escapes from an open exit', () => {
-    const { state } = setup();
-    const atExit = structuredClone(withRoom(state, state.pos, { type: 'exit' }));
-    atExit.turn = EXIT_OPEN_TURN;
-    const next = escape(atExit);
+  it('escapes from an open exit in the current room', () => {
+    const { state, rng } = setup();
+    const s = structuredClone(state);
+    s.floorTurn = 10;
+    s.exit = { room: s.pos, open: true, discovered: true, last: null };
+    const next = escape(s, rng);
     expect(next.status).toBe('escaped');
-    expect(next.turn).toBe(EXIT_OPEN_TURN + ESCAPE_TURNS);
+    expect(next.turn).toBe(state.turn + ESCAPE_TURNS);
   });
 
-  it('cannot escape before the exit opens', () => {
-    const { state } = setup();
-    expect(() => escape(withRoom(state, state.pos, { type: 'exit' }))).toThrow(RaidError);
+  it('cannot escape where no exit is open', () => {
+    const { state, rng } = setup();
+    expect(() => escape(state, rng)).toThrow(RaidError);
+    const elsewhere = structuredClone(state);
+    elsewhere.floorTurn = 10;
+    elsewhere.exit = { room: neighbors(state.dungeon, state.pos)[0], open: true, discovered: true, last: null };
+    expect(() => escape(elsewhere, rng)).toThrow(RaidError);
+  });
+
+  it('finishes escaping even if the exit closes during the chant', () => {
+    const { state, rng } = setup();
+    const s = structuredClone(state);
+    s.floorTurn = 16;
+    s.exit = { room: s.pos, open: true, discovered: true, last: null };
+    const next = escape(s, rng);
+    expect(next.exit.open).toBe(false);
+    expect(next.status).toBe('escaped');
+  });
+
+  it('the exit opens somewhere else at floor turn 10', () => {
+    const { state, rng } = setup();
+    const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
+    s.floorTurn = 9;
+    const next = openChest(s, rng);
+    expect(next.floorTurn).toBe(10);
+    expect(next.exit.open).toBe(true);
+    expect(next.exit.room).not.toBe(next.pos);
+    expect(next.exit.room).not.toBe(next.dungeon.stairs);
+    expect(next.messages.some((m) => m.includes('どこかで脱出口が開いた'))).toBe(true);
+  });
+
+  it('discovers an open exit in a neighbouring room', () => {
+    const { state, rng } = setup();
+    const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
+    s.floorTurn = 11;
+    s.exit = { room: neighbors(s.dungeon, s.pos)[0], open: true, discovered: false, last: null };
+    expect(openChest(s, rng).exit.discovered).toBe(true);
+  });
+
+  it('the exit closes after its open window and forgets the discovery', () => {
+    const { state, rng } = setup();
+    const room = neighbors(state.dungeon, state.pos)[0];
+    const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
+    s.floorTurn = 17;
+    s.exit = { room, open: true, discovered: true, last: null };
+    const next = openChest(s, rng);
+    expect(next.exit).toEqual({ room: null, open: false, discovered: false, last: room });
+    expect(next.messages.some((m) => m.includes('脱出口が閉じた'))).toBe(true);
+  });
+
+  it('reopens in a different room', () => {
+    const { state, rng } = setup();
+    const room = neighbors(state.dungeon, state.pos)[0];
+    const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
+    s.floorTurn = 21;
+    s.exit = { room: null, open: false, discovered: false, last: room };
+    const next = openChest(s, rng);
+    expect(next.exit.open).toBe(true);
+    expect(next.exit.room).not.toBe(room);
+  });
+
+  it('descends the stairs to a fresh floor', () => {
+    const { state, rng } = setup();
+    const s = structuredClone(withRoom(state, state.pos, { type: 'stairs' }));
+    s.floorTurn = 20;
+    const next = descend(s, rng);
+    expect(next.floor).toBe(2);
+    expect(next.floorTurn).toBe(0);
+    expect(next.turn).toBe(state.turn + DESCEND_TURNS);
+    expect(next.dungeon.depth).toBe(2);
+    expect(next.pos).toBe(next.dungeon.start);
+    expect(next.exit.open).toBe(false);
+    expect(next.messages.some((m) => m.includes('地下2階に降りた'))).toBe(true);
+  });
+
+  it('cannot descend without stairs or below the last floor', () => {
+    const { state, rng } = setup();
+    expect(() => descend(withRoom(state, state.pos, { type: 'empty' }), rng)).toThrow(RaidError);
+    const bottom = structuredClone(withRoom(state, state.pos, { type: 'stairs' }));
+    bottom.floor = MAX_FLOOR;
+    expect(() => descend(bottom, rng)).toThrow(RaidError);
+  });
+
+  it('deeper monsters are scaled up', () => {
+    const { state, rng } = setup();
+    const target = neighbors(state.dungeon, state.pos)[0];
+    const s = structuredClone(withRoom(state, target, { type: 'monster', monsterId: 'rat', cleared: false }));
+    s.floor = 3;
+    const next = moveTo(s, target, rng);
+    expect(next.lastBattle?.result.maxHp[1]).toBe(scaledMonster(getMonster('rat'), 3).maxHp);
   });
 
   it('miasma damages the adventurer in a closed room', () => {
     const { state, rng } = setup();
     const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
-    s.turn = 29;
+    s.floorTurn = 29;
     const next = openChest(s, rng);
-    expect(next.turn).toBe(30);
+    expect(next.floorTurn).toBe(30);
     expect(next.adventurer.hp).toBe(50 - MIASMA_DAMAGE);
   });
 
   it('miasma can kill', () => {
     const { state, rng } = setup();
     const s = structuredClone(withRoom(state, state.pos, { type: 'chest', cleared: false }));
-    s.turn = 29;
+    s.floorTurn = 29;
     s.adventurer.hp = 3;
     const next = openChest(s, rng);
     expect(next.status).toBe('dead');

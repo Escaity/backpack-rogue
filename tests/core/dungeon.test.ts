@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DUNGEON_SIZE, EXIT_OPEN_TURN, generateDungeon, isClosed, isExitOpen, neighbors, ringOf, turnsUntilClosed,
+  DUNGEON_SIZE, MAX_FLOOR, MIASMA_SCHEDULE, STAIRS_MIN_DISTANCE, generateDungeon, isClosed, neighbors, ringOf, roomHint, turnsUntilClosed,
 } from '../../src/core/dungeon';
-import { MONSTER_IDS } from '../../src/core/monsters';
+import { monstersForFloor } from '../../src/core/monsters';
 import { createRng } from '../../src/core/rng';
 
-const gen = (seed: number) => generateDungeon(createRng(seed), MONSTER_IDS);
+const gen = (seed: number, depth = 1) => generateDungeon(createRng(seed), depth);
 
 describe('dungeon', () => {
-  it('creates a 5x5 map', () => {
-    const d = gen(1);
+  it('creates a 5x5 map for the given depth', () => {
+    const d = gen(1, 2);
     expect(d.size).toBe(DUNGEON_SIZE);
     expect(d.rooms).toHaveLength(25);
+    expect(d.depth).toBe(2);
   });
 
   it('every room is reachable from the start', () => {
@@ -36,20 +37,37 @@ describe('dungeon', () => {
     }
   });
 
-  it('places the expected room types', () => {
-    for (let seed = 0; seed < 20; seed++) {
-      const d = gen(seed);
-      const count = (type: string) => d.rooms.filter((r) => r.type === type).length;
-      expect(count('exit')).toBe(2);
-      expect(count('monster')).toBe(8);
-      expect(count('chest')).toBe(5);
-      expect(count('trap')).toBe(3);
-      expect(count('spring')).toBe(1);
-      expect(d.rooms[d.start].type).toBe('empty');
-      expect(d.exits).not.toContain(d.start);
-      expect(ringOf(d.rooms[d.start], d.size)).toBe(2);
-      for (const r of d.rooms.filter((x) => x.type === 'monster')) expect(MONSTER_IDS).toContain(r.monsterId);
+  it('places the expected room types for each depth', () => {
+    for (const depth of [1, 2, 3]) {
+      for (let seed = 0; seed < 10; seed++) {
+        const d = gen(seed, depth);
+        const count = (type: string) => d.rooms.filter((r) => r.type === type).length;
+        expect(count('monster')).toBe(8);
+        expect(count('chest')).toBe(5);
+        expect(count('trap')).toBe(3);
+        expect(count('spring')).toBe(1);
+        expect(count('stairs')).toBe(depth < MAX_FLOOR ? 1 : 0);
+        expect(d.stairs === null ? 0 : 1).toBe(depth < MAX_FLOOR ? 1 : 0);
+        if (d.stairs !== null) expect(d.rooms[d.stairs].type).toBe('stairs');
+        expect(d.rooms[d.start].type).toBe('empty');
+        expect(ringOf(d.rooms[d.start], d.size)).toBe(2);
+        for (const r of d.rooms.filter((x) => x.type === 'monster')) expect(monstersForFloor(depth)).toContain(r.monsterId);
+      }
     }
+  });
+
+  it('puts the stairs away from the start', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const d = gen(seed, 1);
+      const s = d.rooms[d.start];
+      const st = d.rooms[d.stairs!];
+      expect(Math.abs(s.x - st.x) + Math.abs(s.y - st.y)).toBeGreaterThanOrEqual(STAIRS_MIN_DISTANCE);
+    }
+  });
+
+  it('hints at stairs from a neighbouring room', () => {
+    const d = gen(1, 1);
+    expect(roomHint(d.rooms[d.stairs!])).toBe('下から風が吹き上がる');
   });
 
   it('starts with only the start room visited', () => {
@@ -58,23 +76,23 @@ describe('dungeon', () => {
   });
 
   it('is deterministic for the same seed', () => {
-    const strip = (seed: number) => JSON.stringify({ ...gen(seed), rooms: gen(seed).rooms.map((r) => r.type) });
-    expect(strip(8)).toBe(strip(8));
+    expect(JSON.stringify(gen(8, 2))).toBe(JSON.stringify(gen(8, 2)));
   });
 
   it('closes rings according to the miasma schedule', () => {
     const d = gen(1);
     const outer = d.rooms.find((r) => ringOf(r, d.size) === 2)!;
     const center = d.rooms[12];
-    expect(isClosed(outer, d.size, 29)).toBe(false);
-    expect(isClosed(outer, d.size, 30)).toBe(true);
-    expect(isClosed(center, d.size, 59)).toBe(false);
-    expect(isClosed(center, d.size, 60)).toBe(true);
-    expect(turnsUntilClosed(outer, d.size, 25)).toBe(5);
-  });
-
-  it('opens exits at the configured turn', () => {
-    expect(isExitOpen(EXIT_OPEN_TURN - 1)).toBe(false);
-    expect(isExitOpen(EXIT_OPEN_TURN)).toBe(true);
+    const closeAt = (ring: number) => MIASMA_SCHEDULE.find((s) => s.ring === ring)!.turn;
+    const outerAt = closeAt(2);
+    const centerAt = closeAt(0);
+    // 外側から順に閉じる
+    expect(outerAt).toBeLessThan(closeAt(1));
+    expect(closeAt(1)).toBeLessThan(centerAt);
+    expect(isClosed(outer, d.size, outerAt - 1)).toBe(false);
+    expect(isClosed(outer, d.size, outerAt)).toBe(true);
+    expect(isClosed(center, d.size, centerAt - 1)).toBe(false);
+    expect(isClosed(center, d.size, centerAt)).toBe(true);
+    expect(turnsUntilClosed(outer, d.size, outerAt - 5)).toBe(5);
   });
 });

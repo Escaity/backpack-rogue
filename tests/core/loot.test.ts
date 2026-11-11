@@ -40,6 +40,34 @@ describe('monsters and loot', () => {
     }
   });
 
+  it('deeper chests hold more items and gold', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const items = rollChest(createRng(seed), 3);
+      const nonGold = items.filter((i) => i.defId !== 'gold');
+      expect(nonGold.length).toBeGreaterThanOrEqual(3);
+      expect(nonGold.length).toBeLessThanOrEqual(5);
+      const gold = items.find((i) => i.defId === 'gold')!;
+      expect(gold.qty).toBeGreaterThanOrEqual(15);
+      expect(gold.qty).toBeLessThanOrEqual(120);
+    }
+  });
+
+  it('floor 3 chests favour treasure', () => {
+    const share = (floor: number) => {
+      let treasure = 0;
+      let total = 0;
+      for (let seed = 0; seed < 300; seed++) {
+        for (const item of rollChest(createRng(seed), floor)) {
+          if (item.defId === 'gold') continue;
+          total++;
+          if (getDef(item.defId).kind === 'treasure') treasure++;
+        }
+      }
+      return treasure / total;
+    };
+    expect(share(3)).toBeGreaterThan(share(2) * 1.4);
+  });
+
   it('shop stock comes from the shop pool', () => {
     const stock = rollShopStock(createRng(4));
     expect(stock).toHaveLength(6);
